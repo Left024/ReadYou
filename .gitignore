@@ -102,3 +102,9 @@ signature
 
 AGENTS.md
 .dsh/
+
+# Android Studio (additional)
+.kotlin/
+*.hprof
+.externalNativeBuild/
+*.aab
