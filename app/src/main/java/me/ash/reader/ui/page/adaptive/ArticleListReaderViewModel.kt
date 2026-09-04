@@ -230,7 +230,6 @@ constructor(
     }
 
     fun sync() {
-        diffMapHolder.commitDiffsToDb()
         viewModelScope.launch {
             _isSyncingFlow.value = true
             val isSyncing = syncWorkerStatusFlow.value
@@ -242,6 +241,10 @@ constructor(
             }
         }
         applicationScope.launch(ioDispatcher) {
+            // 先等待打开文章产生的已读 diff 落库完成，再启动同步 worker：
+            // 保证同步快照能看到最新本地已读（reconcile 据此向远端推读），
+            // 避免竞态导致刷新完成后已读文章被显示回未读
+            diffMapHolder.commitDiffsNow()
             val filterState = filterStateUseCase.filterStateFlow.value
             val service = rssService.get()
             when (service) {

@@ -199,12 +199,26 @@ class DiffMapHolder @Inject constructor(
 
     fun commitDiffsToDb() {
         applicationScope.launch(ioDispatcher) {
-            val markAsReadArticles = diffMap.filter { !it.value.isUnread }.map { it.key }.toSet()
-            val markAsUnreadArticles = diffMap.filter { it.value.isUnread }.map { it.key }.toSet()
-            clearDiffs()
+            commitDiffsNow()
+        }
+    }
+
+    /**
+     * 将当前 diff 落库并清理 overlay。
+     * 先完成数据库写入、再清除内存 overlay，避免 UI 短暂回跳为未读；
+     * 调用方可 suspend 等待完成后再启动同步，保证同步快照包含最新已读状态。
+     */
+    suspend fun commitDiffsNow() {
+        val markAsReadArticles = diffMap.filter { !it.value.isUnread }.map { it.key }.toSet()
+        val markAsUnreadArticles = diffMap.filter { it.value.isUnread }.map { it.key }.toSet()
+        if (markAsReadArticles.isNotEmpty()) {
             rssService.get().batchMarkAsRead(articleIds = markAsReadArticles, isUnread = false)
+        }
+        if (markAsUnreadArticles.isNotEmpty()) {
             rssService.get().batchMarkAsRead(articleIds = markAsUnreadArticles, isUnread = true)
         }
+        // 落库完成后再清 overlay/缓存
+        clearDiffs()
     }
 
     private fun writeDiffsToCache() {
