@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -17,11 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.ModalBottomSheetValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
@@ -33,12 +35,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
@@ -88,9 +87,19 @@ import me.ash.reader.ui.page.home.feeds.drawer.feed.FeedOptionDrawer
 import me.ash.reader.ui.page.home.feeds.drawer.group.GroupOptionDrawer
 import me.ash.reader.ui.page.home.feeds.subscribe.SubscribeDialog
 import me.ash.reader.ui.page.home.feeds.subscribe.SubscribeViewModel
+import me.ash.reader.ui.page.home.flow.PullToSyncIndicator
+import me.ash.reader.ui.page.home.reading.PullToLoadDefaults
+import me.ash.reader.ui.page.home.reading.PullToLoadDefaults.ContentOffsetMultiple
+import me.ash.reader.ui.page.home.reading.PullToLoadState
+import me.ash.reader.ui.page.home.reading.pullToLoad
+import me.ash.reader.ui.page.home.reading.rememberPullToLoadState
 import me.ash.reader.ui.page.settings.accounts.AccountViewModel
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalSharedTransitionApi::class,
+    ExperimentalMaterialApi::class,
+)
 @Composable
 fun FeedsPage(
     //    navController: NavHostController,
@@ -138,8 +147,8 @@ fun FeedsPage(
 
     var isSyncing by remember { mutableStateOf(false) }
     var syncProgress by remember { mutableStateOf<Int?>(null) }
-    val syncingState = rememberPullToRefreshState()
     val syncingScope = rememberCoroutineScope()
+    val settleSpec = remember { spring<Float>(dampingRatio = Spring.DampingRatioLowBouncy) }
     val doSync: () -> Unit = {
         isSyncing = true
         syncProgress = null
@@ -173,6 +182,29 @@ fun FeedsPage(
         }
         onDispose { feedsViewModel.syncWorkLiveData.removeObservers(owner) }
     }
+
+    // 下拉刷新：与文章信息流页同一套 PullToLoad 机制与显示（同步中圆圈+百分比）
+    var currentPullToLoadState: PullToLoadState? by remember { mutableStateOf(null) }
+    val onPullToSync: (() -> Unit)? =
+        if (isSyncing) null
+        else {
+            {
+                doSync()
+                currentPullToLoadState?.animateDistanceTo(
+                    targetValue = 0f,
+                    animationSpec = settleSpec,
+                )
+            }
+        }
+
+    val pullToLoadState =
+        rememberPullToLoadState(
+                key = listState,
+                onLoadNext = null,
+                onLoadPrevious = onPullToSync,
+                loadThreshold = PullToLoadDefaults.loadThreshold(.1f),
+            )
+            .also { currentPullToLoadState = it }
 
     fun expandAllGroups() {
         groupWithFeedList.forEach { groupWithFeed -> groupsVisible[groupWithFeed.group.id] = true }
@@ -239,8 +271,27 @@ fun FeedsPage(
         },
         content = {
             Box(modifier = Modifier.fillMaxSize()) {
-            PullToRefreshBox(state = syncingState, isRefreshing = isSyncing, onRefresh = doSync) {
-                LazyColumn(modifier = Modifier.fillMaxSize().drawVerticalScrollIndicator(listState), state = listState) {
+                LazyColumn(
+                    modifier =
+                        Modifier.pullToLoad(
+                                state = pullToLoadState,
+                                enabled = true,
+                                contentOffsetY = { fraction ->
+                                    if (fraction > 0f) {
+                                        (fraction * ContentOffsetMultiple * 1.5f)
+                                            .dp
+                                            .roundToPx()
+                                    } else {
+                                        (fraction * ContentOffsetMultiple * 2f)
+                                            .dp
+                                            .roundToPx()
+                                    }
+                                },
+                            )
+                            .fillMaxSize()
+                            .drawVerticalScrollIndicator(listState),
+                    state = listState,
+                ) {
                     item {
                         DisplayText(text = feedsUiState.account?.name ?: "", desc = "") {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -339,26 +390,14 @@ fun FeedsPage(
                         )
                     }
                 }
-            }
-            // 同步百分比：首页下拉刷新时显示在转圈下方
-            if (isSyncing && syncProgress != null) {
-                Surface(
-                    modifier =
-                        Modifier
-                            .statusBarsPadding()
-                            .padding(top = 112.dp)
-                            .align(Alignment.TopCenter),
-                    color = MaterialTheme.colorScheme.primaryFixedDim,
-                    shape = MaterialTheme.shapes.extraLarge,
-                ) {
-                    Text(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                        text = "$syncProgress%",
-                        color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
-                        style = MaterialTheme.typography.labelMedium,
+                // 下拉同步指示：与文章信息流页同款（下拉进度 / 同步中转圈+百分比）
+                currentPullToLoadState?.let {
+                    PullToSyncIndicator(
+                        pullToLoadState = it,
+                        isSyncing = isSyncing,
+                        progress = if (isSyncing) syncProgress else null,
                     )
                 }
-            }
             }
         },
         bottomBar = {
