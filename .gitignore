@@ -108,3 +108,5 @@ AGENTS.md
 *.hprof
 .externalNativeBuild/
 *.aab
+
+apk/
