@@ -27,6 +27,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import me.ash.reader.R
 import me.ash.reader.domain.data.SyncLogger
+import me.ash.reader.domain.data.DiffMapHolder
 import me.ash.reader.domain.model.account.Account
 import me.ash.reader.domain.model.account.AccountType
 import me.ash.reader.domain.model.account.AccountType.Companion.FreshRSS
@@ -77,6 +78,7 @@ constructor(
     private val workManager: WorkManager,
     private val accountService: AccountService,
     private val syncLogger: SyncLogger,
+    diffMapHolder: DiffMapHolder,
 ) :
     AbstractRssRepository(
         articleDao,
@@ -88,6 +90,7 @@ constructor(
         ioDispatcher,
         defaultDispatcher,
         accountService,
+        diffMapHolder,
     ) {
 
     override val importSubscription: Boolean = false
@@ -357,8 +360,12 @@ constructor(
             }
 
             launch {
+                // 远端已读 ⇒ 本地标已读；但跳过仍处于 UI"灰色已读 overlay"的文章
+                // （打开后尚未 commit 落库），保持灰色状态直到用户离开列表页再统一落库
+                val overlayReadIds =
+                    diffMapHolder.overlayReadIds().map { it.dollarLast() }.toSet()
                 val toBeReadLocal =
-                    remoteReadIds.await().intersect(localUnreadIds).map {
+                    remoteReadIds.await().intersect(localUnreadIds - overlayReadIds).map {
                         accountId spacerDollar it
                     }
                 toBeReadLocal.chunked(1000).forEach {
@@ -628,7 +635,10 @@ constructor(
 
             launch {
                 val remoteReadIds = remoteAllIds.await() - remoteUnreadIds.await()
-                val toBeReadIds = remoteReadIds.intersect(localUnreadIds)
+                // 跳过仍处于 UI"灰色已读 overlay"的文章，保持灰色直到离开列表页统一落库
+                val overlayReadIds =
+                    diffMapHolder.overlayReadIds().map { it.dollarLast() }.toSet()
+                val toBeReadIds = remoteReadIds.intersect(localUnreadIds - overlayReadIds)
 
                 toBeReadIds
                     .map { it.dbId(accountId) }

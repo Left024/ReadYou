@@ -241,10 +241,9 @@ constructor(
             }
         }
         applicationScope.launch(ioDispatcher) {
-            // 先等待打开文章产生的已读 diff 落库完成，再启动同步 worker：
-            // 保证同步快照能看到最新本地已读（reconcile 据此向远端推读），
-            // 避免竞态导致刷新完成后已读文章被显示回未读
-            diffMapHolder.commitDiffsNow()
+            // 注意：此处不再提交已读 diff —— 打开文章产生的灰色已读 overlay 保持到
+            // 用户离开列表页（exitToHome）才统一落库；同步 reconcile 已会跳过
+            // overlay 文章（见 GR/Fever 的 overlayReadIds 过滤），刷新不会把它们剔除。
             val filterState = filterStateUseCase.filterStateFlow.value
             val service = rssService.get()
             when (service) {

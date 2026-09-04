@@ -15,6 +15,7 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import me.ash.reader.domain.data.SyncLogger
+import me.ash.reader.domain.data.DiffMapHolder
 import me.ash.reader.domain.model.account.AccountType
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.feed.FeedWithArticle
@@ -43,6 +44,7 @@ constructor(
     private val workManager: WorkManager,
     private val accountService: AccountService,
     private val syncLogger: SyncLogger,
+    diffMapHolder: DiffMapHolder,
 ) :
     AbstractRssRepository(
         articleDao,
@@ -54,6 +56,7 @@ constructor(
         ioDispatcher,
         defaultDispatcher,
         accountService,
+        diffMapHolder,
     ) {
 
     override suspend fun sync(

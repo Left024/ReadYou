@@ -29,9 +29,16 @@ import me.ash.reader.infrastructure.di.ApplicationScope
 import me.ash.reader.infrastructure.di.IODispatcher
 import java.io.File
 import javax.inject.Inject
+import javax.inject.Singleton
 
 private const val TAG = "DiffMapHolder"
 
+/**
+ * 已读/未读 UI diff 的共享会话状态（单例）：
+ * 列表页 overlay 与同步服务层需要看到同一份"灰色已读"集合，
+ * 以便同步 reconcile 不把仍处于 overlay 已读状态的文章提前落库/剔除。
+ */
+@Singleton
 @OptIn(FlowPreview::class)
 class DiffMapHolder @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -41,6 +48,10 @@ class DiffMapHolder @Inject constructor(
     private val rssService: RssService,
 ) {
     val diffMap = mutableStateMapOf<String, Diff>()
+
+    /** 当前处于 UI overlay"已读"（灰色）状态的文章 id（完整 db id）。 */
+    fun overlayReadIds(): Set<String> =
+        diffMap.filterValues { !it.isUnread }.keys.toSet()
 
     private val pendingSyncDiffs = mutableStateMapOf<String, Diff>()
     private val syncedDiffs = mutableMapOf<String, Diff>()

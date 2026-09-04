@@ -14,6 +14,7 @@ import kotlin.collections.set
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.coroutineScope
 import me.ash.reader.R
+import me.ash.reader.domain.data.DiffMapHolder
 import me.ash.reader.domain.model.account.Account
 import me.ash.reader.domain.model.account.AccountType
 import me.ash.reader.domain.model.account.security.FeverSecurityKey
@@ -52,6 +53,7 @@ constructor(
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
     workManager: WorkManager,
     private val accountService: AccountService,
+    diffMapHolder: DiffMapHolder,
 ) :
     AbstractRssRepository(
         articleDao,
@@ -63,6 +65,7 @@ constructor(
         ioDispatcher,
         defaultDispatcher,
         accountService,
+        diffMapHolder,
     ) {
 
     override val importSubscription: Boolean = false
@@ -305,8 +308,12 @@ constructor(
                             )
                         }
                     } else {
-                        // 本地未读且远端已读：本地标为已读
-                        articleDao.markAsReadByArticleId(accountId, meta.id, false)
+                        // 本地未读且远端已读：本地标为已读；
+                        // 但跳过仍处于 UI"灰色已读 overlay"的文章（打开后未落库），
+                        // 保持灰色直到用户离开列表页统一落库
+                        if (meta.id !in diffMapHolder.overlayReadIds()) {
+                            articleDao.markAsReadByArticleId(accountId, meta.id, false)
+                        }
                     }
                 }
                 if (meta.isStarred != shouldBeStarred) {
