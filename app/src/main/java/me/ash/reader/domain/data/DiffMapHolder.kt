@@ -23,12 +23,14 @@ import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.account.Account
 import me.ash.reader.domain.model.account.AccountType
 import me.ash.reader.domain.model.article.ArticleWithFeed
+import me.ash.reader.domain.service.AbstractRssRepository
 import me.ash.reader.domain.service.AccountService
 import me.ash.reader.domain.service.RssService
 import me.ash.reader.infrastructure.di.ApplicationScope
 import me.ash.reader.infrastructure.di.IODispatcher
 import java.io.File
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 private const val TAG = "DiffMapHolder"
@@ -45,13 +47,17 @@ class DiffMapHolder @Inject constructor(
     @ApplicationScope private val applicationScope: CoroutineScope,
     @IODispatcher private val ioDispatcher: CoroutineDispatcher,
     private val accountService: AccountService,
-    private val rssService: RssService,
+    private val rssServiceProvider: Provider<RssService>,
 ) {
     val diffMap = mutableStateMapOf<String, Diff>()
 
     /** 当前处于 UI overlay"已读"（灰色）状态的文章 id（完整 db id）。 */
     fun overlayReadIds(): Set<String> =
         diffMap.filterValues { !it.isUnread }.keys.toSet()
+
+
+    /** 当前账户的 RSS 服务（延迟解析，避免与 RssService -> services -> DiffMapHolder 的构造循环） */
+    private fun currentRssRepository(): AbstractRssRepository = rssServiceProvider.get().get()
 
     private val pendingSyncDiffs = mutableStateMapOf<String, Diff>()
     private val syncedDiffs = mutableMapOf<String, Diff>()
@@ -222,11 +228,12 @@ class DiffMapHolder @Inject constructor(
     suspend fun commitDiffsNow() {
         val markAsReadArticles = diffMap.filter { !it.value.isUnread }.map { it.key }.toSet()
         val markAsUnreadArticles = diffMap.filter { it.value.isUnread }.map { it.key }.toSet()
+        val repository = currentRssRepository()
         if (markAsReadArticles.isNotEmpty()) {
-            rssService.get().batchMarkAsRead(articleIds = markAsReadArticles, isUnread = false)
+            repository.batchMarkAsRead(articleIds = markAsReadArticles, isUnread = false)
         }
         if (markAsUnreadArticles.isNotEmpty()) {
-            rssService.get().batchMarkAsRead(articleIds = markAsUnreadArticles, isUnread = true)
+            repository.batchMarkAsRead(articleIds = markAsUnreadArticles, isUnread = true)
         }
         // 落库完成后再清 overlay/缓存
         clearDiffs()
@@ -256,7 +263,7 @@ class DiffMapHolder @Inject constructor(
         val markAsUnreadArticles =
             toBeSync.filter { it.value.isUnread }.map { it.key }.toSet()
 
-        val rssService = rssService.get()
+        val rssService = currentRssRepository()
 
         val synced = supervisorScope {
             val read = async {

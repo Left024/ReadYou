@@ -14,6 +14,7 @@ import me.ash.reader.domain.service.AccountService
 import me.ash.reader.infrastructure.preference.SettingsProvider
 import me.ash.reader.infrastructure.rss.ReaderCacheHelper
 import me.ash.reader.infrastructure.rss.RssHelper
+import javax.inject.Provider
 import javax.inject.Singleton
 
 @Module
@@ -26,10 +27,10 @@ object CacheHolderModule {
         @ApplicationScope applicationScope: CoroutineScope,
         @IODispatcher ioDispatcher: CoroutineDispatcher,
         accountService: AccountService,
-        rssService: RssService,
+        rssServiceProvider: Provider<RssService>,
     ): DiffMapHolder {
         return DiffMapHolder(
-            context = context, applicationScope, ioDispatcher, accountService, rssService
+            context = context, applicationScope, ioDispatcher, accountService, rssServiceProvider
         )
     }
 
