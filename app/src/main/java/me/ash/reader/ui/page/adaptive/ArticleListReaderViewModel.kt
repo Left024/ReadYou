@@ -313,23 +313,11 @@ constructor(
                         ?: rssService.get().findArticleById(articleId)!!)
 
             if (diffMapHolder.checkIfUnread(item)) {
+                // 打开文章自动已读：仅更新 UI overlay（返回列表时文章显示为灰色已读）。
+                // 持久化落库/推远端交给 commit 时机（下拉刷新前、应用退后台、
+                // 以及离开整个文章列表页时 FlowPage onDispose）——避免"未读"过滤
+                // 在返回列表的瞬间就把已读文章从列表剔除。
                 diffMapHolder.updateDiff(item, isUnread = false)
-                // 打开文章即已读：除 UI overlay 外立即落库并推送远端，
-                // 避免刷新/后台同步期间列表重组后读状态丢失或被远端快照覆盖
-                val autoReadArticleId = item.article.id
-                launch(ioDispatcher) {
-                    runCatching {
-                        rssService
-                            .get()
-                            .markAsRead(
-                                groupId = null,
-                                feedId = null,
-                                articleId = autoReadArticleId,
-                                before = null,
-                                isUnread = false,
-                            )
-                    }
-                }
             }
             item.run {
                 _readingUiState.update {

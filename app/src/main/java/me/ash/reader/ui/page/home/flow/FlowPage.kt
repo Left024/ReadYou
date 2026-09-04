@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -306,6 +307,13 @@ fun FlowPage(
 
     val isSyncing = viewModel.isSyncingFlow.collectAsStateValue()
     val syncProgress = viewModel.syncProgress.collectAsStateValue()
+
+    // 离开整个文章列表页（返回首页）时提交打开文章产生的已读 diff（落库 + 待推送），
+    // 使下次进入列表时"未读"过滤能正常剔除已读文章；
+    // 不能在此前提交，否则从阅读页返回的瞬间文章就会从列表消失而非显示灰色
+    DisposableEffect(Unit) {
+        onDispose { viewModel.diffMapHolder.commitDiffsToDb() }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         RYScaffold(
