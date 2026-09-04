@@ -402,6 +402,14 @@ abstract class AbstractRssRepository(
         feedDao.updateIsBrowserByGroupId(accountService.getCurrentAccountId(), group.id, isBrowser)
     }
 
+    suspend fun groupTitleDisplay(group: Group, titleDisplayMode: Int) {
+        feedDao.updateTitleDisplayModeByGroupId(
+            accountService.getCurrentAccountId(),
+            group.id,
+            titleDisplayMode,
+        )
+    }
+
     suspend fun groupAllowNotification(group: Group, isNotification: Boolean) {
         feedDao.updateIsNotificationByGroupId(
             accountService.getCurrentAccountId(),

@@ -35,6 +35,12 @@ data class Feed(
     val isFullContent: Boolean = false,
     @ColumnInfo(defaultValue = "0")
     val isBrowser: Boolean = false,
+    /**
+     * 阅读页是否显示文章标题（大标题区）。
+     * 0 = 跟随全局默认设置，1 = 始终显示，2 = 始终隐藏。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val titleDisplayMode: Int = 0,
     @Ignore val important: Int = 0
 ) {
     constructor(
@@ -46,7 +52,8 @@ data class Feed(
         accountId: Int,
         isNotification: Boolean,
         isFullContent: Boolean,
-        isBrowser: Boolean
+        isBrowser: Boolean,
+        titleDisplayMode: Int = 0
     ) : this(
         id = id,
         name = name,
@@ -57,6 +64,16 @@ data class Feed(
         isNotification = isNotification,
         isFullContent = isFullContent,
         isBrowser = isBrowser,
+        titleDisplayMode = titleDisplayMode,
         important = 0
     )
+
+    companion object {
+        /** 阅读页标题显示：跟随全局默认设置 */
+        const val TITLE_DISPLAY_FOLLOW_DEFAULT = 0
+        /** 阅读页标题显示：始终显示 */
+        const val TITLE_DISPLAY_SHOW = 1
+        /** 阅读页标题显示：始终隐藏 */
+        const val TITLE_DISPLAY_HIDE = 2
+    }
 }

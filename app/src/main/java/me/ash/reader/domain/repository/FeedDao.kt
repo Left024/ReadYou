@@ -86,6 +86,19 @@ interface FeedDao {
 
     @Query(
         """
+        UPDATE feed SET titleDisplayMode = :titleDisplayMode
+        WHERE accountId = :accountId
+        AND groupId = :groupId
+        """
+    )
+    suspend fun updateTitleDisplayModeByGroupId(
+        accountId: Int,
+        groupId: String,
+        titleDisplayMode: Int,
+    )
+
+    @Query(
+        """
         SELECT * FROM feed
         WHERE groupId = :groupId
         AND accountId = :accountId
@@ -189,6 +202,7 @@ interface FeedDao {
                         isNotification = existing.isNotification,
                         isFullContent = existing.isFullContent,
                         isBrowser = existing.isBrowser,
+                        titleDisplayMode = existing.titleDisplayMode,
                     )
                 if (updated == existing) {
                     null

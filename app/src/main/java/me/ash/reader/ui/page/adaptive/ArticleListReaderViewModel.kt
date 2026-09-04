@@ -308,6 +308,7 @@ constructor(
                             author = article.author,
                             link = article.link,
                             publishedDate = article.date,
+                            titleDisplayMode = feed.titleDisplayMode,
                         )
                         .prefetchArticleId()
                         .renderContent(this)
@@ -462,6 +463,8 @@ data class ReaderState(
     val link: String? = null,
     val publishedDate: Date = Date(0L),
     val content: ContentState = Loading,
+    /** 所属订阅源的标题显示预设：Feed.TITLE_DISPLAY_* */
+    val titleDisplayMode: Int = Feed.TITLE_DISPLAY_FOLLOW_DEFAULT,
     val listIndex: Int? = null,
     val nextArticle: PrefetchResult? = null,
     val previousArticle: PrefetchResult? = null,

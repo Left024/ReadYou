@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.ash.reader.R
+import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
 import me.ash.reader.ui.component.base.RYSelectionChip
 import me.ash.reader.ui.component.base.Subtitle
@@ -35,6 +36,8 @@ fun FeedOptionView(
     selectedAllowNotificationPreset: Boolean = false,
     selectedParseFullContentPreset: Boolean = false,
     selectedOpenInBrowserPreset: Boolean = false,
+    showTitleDisplaySection: Boolean = false,
+    selectedTitleDisplayMode: Int = Feed.TITLE_DISPLAY_FOLLOW_DEFAULT,
     isMoveToGroup: Boolean = false,
     showGroup: Boolean = true,
     showUnsubscribe: Boolean = true,
@@ -43,6 +46,7 @@ fun FeedOptionView(
     allowNotificationPresetOnClick: () -> Unit = {},
     parseFullContentPresetOnClick: () -> Unit = {},
     openInBrowserPresetOnClick: () -> Unit = {},
+    onTitleDisplayModeClick: (Int) -> Unit = {},
     clearArticlesOnClick: () -> Unit = {},
     unsubscribeOnClick: () -> Unit = {},
     onGroupClick: (groupId: String) -> Unit = {},
@@ -59,11 +63,14 @@ fun FeedOptionView(
             selectedAllowNotificationPreset = selectedAllowNotificationPreset,
             selectedParseFullContentPreset = selectedParseFullContentPreset,
             selectedOpenInBrowserPreset = selectedOpenInBrowserPreset,
+            showTitleDisplaySection = showTitleDisplaySection,
+            selectedTitleDisplayMode = selectedTitleDisplayMode,
             showUnsubscribe = showUnsubscribe,
             notSubscribeMode = notSubscribeMode,
             allowNotificationPresetOnClick = allowNotificationPresetOnClick,
             parseFullContentPresetOnClick = parseFullContentPresetOnClick,
             openInBrowserPresetOnClick = openInBrowserPresetOnClick,
+            onTitleDisplayModeClick = onTitleDisplayModeClick,
             clearArticlesOnClick = clearArticlesOnClick,
             unsubscribeOnClick = unsubscribeOnClick,
         )
@@ -107,11 +114,14 @@ private fun Preset(
     selectedAllowNotificationPreset: Boolean = false,
     selectedParseFullContentPreset: Boolean = false,
     selectedOpenInBrowserPreset: Boolean = false,
+    showTitleDisplaySection: Boolean = false,
+    selectedTitleDisplayMode: Int = Feed.TITLE_DISPLAY_FOLLOW_DEFAULT,
     showUnsubscribe: Boolean = true,
     notSubscribeMode: Boolean = false,
     allowNotificationPresetOnClick: () -> Unit = {},
     parseFullContentPresetOnClick: () -> Unit = {},
     openInBrowserPresetOnClick: () -> Unit = {},
+    onTitleDisplayModeClick: (Int) -> Unit = {},
     clearArticlesOnClick: () -> Unit = {},
     unsubscribeOnClick: () -> Unit = {},
 ) {
@@ -150,6 +160,37 @@ private fun Preset(
                 },
             ) {
                 openInBrowserPresetOnClick()
+            }
+        }
+    }
+    if (showTitleDisplaySection) {
+        Spacer(modifier = Modifier.height(26.dp))
+        Subtitle(text = stringResource(R.string.title_display))
+        Spacer(modifier = Modifier.height(10.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
+            verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
+        ) {
+            RYSelectionChip(
+                modifier = Modifier,
+                content = stringResource(R.string.title_display_follow_default),
+                selected = selectedTitleDisplayMode == Feed.TITLE_DISPLAY_FOLLOW_DEFAULT,
+            ) {
+                onTitleDisplayModeClick(Feed.TITLE_DISPLAY_FOLLOW_DEFAULT)
+            }
+            RYSelectionChip(
+                modifier = Modifier,
+                content = stringResource(R.string.title_display_show),
+                selected = selectedTitleDisplayMode == Feed.TITLE_DISPLAY_SHOW,
+            ) {
+                onTitleDisplayModeClick(Feed.TITLE_DISPLAY_SHOW)
+            }
+            RYSelectionChip(
+                modifier = Modifier,
+                content = stringResource(R.string.title_display_hide),
+                selected = selectedTitleDisplayMode == Feed.TITLE_DISPLAY_HIDE,
+            ) {
+                onTitleDisplayModeClick(Feed.TITLE_DISPLAY_HIDE)
             }
         }
     }

@@ -318,6 +318,17 @@
     <string name="all_open_in_browser_tips">用默认浏览器打开 “%1$s”分组的全部文章</string>
     <string name="all_open_in_browser_toast">已允许用默认浏览器打开“%1$s”分组的所有文章</string>
     <string name="all_deny_open_in_browser_toast">已拒绝用默认浏览器打开“%1$s”分组的所有文章</string>
+    <string name="title_display">标题显示</string>
+    <string name="title_display_follow_default">跟随默认</string>
+    <string name="title_display_follow_default_desc">跟随全局默认设置</string>
+    <string name="title_display_show">显示标题</string>
+    <string name="title_display_show_desc">在阅读页显示文章标题</string>
+    <string name="title_display_hide">隐藏标题</string>
+    <string name="title_display_hide_desc">隐藏标题，只显示正文</string>
+    <string name="show_title_in_reading_page">阅读页显示标题</string>
+    <string name="show_title_in_reading_page_desc">文章标题的全局默认显示设置；长按订阅源列表中的源或分组，可单独覆盖</string>
+    <string name="open_in_browser_fab">悬浮打开原文按钮</string>
+    <string name="open_in_browser_fab_desc">在阅读页右下角显示悬浮按钮，点击后在浏览器打开原文链接，与点击标题效果一致</string>
     <string name="client_certificate">客户端证书（可选）</string>
     <string name="latest">最新</string>
     <string name="earliest">最早</string>

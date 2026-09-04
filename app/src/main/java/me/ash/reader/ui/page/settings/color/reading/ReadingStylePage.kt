@@ -43,9 +43,11 @@ import me.ash.reader.infrastructure.preference.LocalPullToSwitchArticle
 import me.ash.reader.infrastructure.preference.LocalReadingAutoHideToolbar
 import me.ash.reader.infrastructure.preference.LocalReadingBoldCharacters
 import me.ash.reader.infrastructure.preference.LocalReadingFonts
+import me.ash.reader.infrastructure.preference.LocalReadingOpenLinkFab
 import me.ash.reader.infrastructure.preference.LocalReadingPageTonalElevation
 import me.ash.reader.infrastructure.preference.LocalReadingRenderer
 import me.ash.reader.infrastructure.preference.LocalReadingTheme
+import me.ash.reader.infrastructure.preference.LocalReadingTitleVisibility
 import me.ash.reader.infrastructure.preference.ReadingFontsPreference
 import me.ash.reader.infrastructure.preference.ReadingPageTonalElevationPreference
 import me.ash.reader.infrastructure.preference.ReadingRendererPreference
@@ -84,6 +86,8 @@ fun ReadingStylePage(
     val pullToSwitchArticle = LocalPullToSwitchArticle.current
     val renderer = LocalReadingRenderer.current
     val boldCharacters = LocalReadingBoldCharacters.current
+    val titleVisibility = LocalReadingTitleVisibility.current
+    val openLinkFab = LocalReadingOpenLinkFab.current
 
     var tonalElevationDialogVisible by remember { mutableStateOf(false) }
     var rendererDialogVisible by remember { mutableStateOf(false) }
@@ -196,6 +200,28 @@ fun ReadingStylePage(
                     ) {
                         RYSwitch(activated = autoHideToolbar.value) {
                             (!autoHideToolbar).put(context, scope)
+                        }
+                    }
+                    SettingItem(
+                        title = stringResource(R.string.show_title_in_reading_page),
+                        desc = stringResource(R.string.show_title_in_reading_page_desc),
+                        onClick = {
+                            (!titleVisibility).put(context, scope)
+                        },
+                    ) {
+                        RYSwitch(activated = titleVisibility.value) {
+                            (!titleVisibility).put(context, scope)
+                        }
+                    }
+                    SettingItem(
+                        title = stringResource(R.string.open_in_browser_fab),
+                        desc = stringResource(R.string.open_in_browser_fab_desc),
+                        onClick = {
+                            (!openLinkFab).put(context, scope)
+                        },
+                    ) {
+                        RYSwitch(activated = openLinkFab.value) {
+                            (!openLinkFab).put(context, scope)
                         }
                     }
                     SettingItem(

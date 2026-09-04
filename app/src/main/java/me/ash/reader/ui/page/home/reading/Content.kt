@@ -48,6 +48,7 @@ fun Content(
     isLoading: Boolean,
     contentPadding: PaddingValues = PaddingValues(),
     onImageClick: ((imgUrl: String, altText: String) -> Unit)? = null,
+    showTitle: Boolean = true,
 ) {
     val context = LocalContext.current
     val subheadUpperCase = LocalReadingSubheadUpperCase.current
@@ -66,6 +67,7 @@ fun Content(
                         title = title,
                         author = author,
                         publishedDate = publishedDate,
+                        showTitle = showTitle,
                         modifier = Modifier.roundClick { link?.let { uriHandler.openUri(it) } },
                     )
                 }

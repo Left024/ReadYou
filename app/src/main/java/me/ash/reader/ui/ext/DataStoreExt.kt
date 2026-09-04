@@ -201,6 +201,10 @@ sealed interface PreferencesKey {
         // Languages
         const val languages = "languages"
 
+        // Reading page (custom)
+        const val readingTitleVisibility = "readingTitleVisibility"
+        const val readingOpenLinkFab = "readingOpenLinkFab"
+
         private val keyList =
             listOf(
                 // Version
@@ -275,6 +279,9 @@ sealed interface PreferencesKey {
                 IntKey(sharedContent),
                 // Languages
                 IntKey(languages),
+                // Reading page (custom)
+                BooleanKey(readingTitleVisibility),
+                BooleanKey(readingOpenLinkFab),
             )
 
         val keys = keyList.associateBy { it.name }
@@ -362,6 +369,10 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
 
         // Languages
         const val languages = "languages"
+
+        // Reading page (custom)
+        const val readingTitleVisibility = "readingTitleVisibility"
+        const val readingOpenLinkFab = "readingOpenLinkFab"
 
         val keys: MutableMap<String, DataStoreKey<*>> =
             mutableMapOf(
@@ -511,6 +522,18 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
                         String::class.java,
                     ),
                 sharedContent to DataStoreKey(intPreferencesKey(sharedContent), Int::class.java),
+
+                // Reading page (custom)
+                readingTitleVisibility to
+                    DataStoreKey(
+                        booleanPreferencesKey(readingTitleVisibility),
+                        Boolean::class.java,
+                    ),
+                readingOpenLinkFab to
+                    DataStoreKey(
+                        booleanPreferencesKey(readingOpenLinkFab),
+                        Boolean::class.java,
+                    ),
                 // Languages
                 languages to DataStoreKey(intPreferencesKey(languages), Int::class.java),
             )

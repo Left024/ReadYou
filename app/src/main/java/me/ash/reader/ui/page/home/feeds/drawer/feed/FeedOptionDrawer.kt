@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import me.ash.reader.R
+import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.infrastructure.preference.LocalOpenLink
 import me.ash.reader.infrastructure.preference.LocalOpenLinkSpecificBrowser
 import me.ash.reader.ui.component.ChangeUrlDialog
@@ -99,6 +100,9 @@ fun FeedOptionDrawer(
                         ?: false,
                     selectedParseFullContentPreset = feedOptionUiState.feed?.isFullContent ?: false,
                     selectedOpenInBrowserPreset = feedOptionUiState.feed?.isBrowser ?: false,
+                    showTitleDisplaySection = true,
+                    selectedTitleDisplayMode =
+                        feedOptionUiState.feed?.titleDisplayMode ?: Feed.TITLE_DISPLAY_FOLLOW_DEFAULT,
                     isMoveToGroup = true,
                     showGroup = feedOptionViewModel.rssService.get().moveSubscription,
                     showUnsubscribe = feedOptionViewModel.rssService.get().deleteSubscription,
@@ -112,6 +116,9 @@ fun FeedOptionDrawer(
                     },
                     openInBrowserPresetOnClick = {
                         feedOptionViewModel.changeOpenInBrowserPreset()
+                    },
+                    onTitleDisplayModeClick = {
+                        feedOptionViewModel.setTitleDisplayMode(it)
                     },
                     clearArticlesOnClick = {
                         feedOptionViewModel.showClearDialog()

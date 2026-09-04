@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -144,6 +145,9 @@ fun GroupOptionDrawer(
     AllOpenInBrowserDialog(
         groupName = group?.name ?: "",
         onConfirm = { scope.launch { drawerState.hide() } })
+    AllTitleDisplayDialog(
+        groupName = group?.name ?: "",
+        onConfirm = { scope.launch { drawerState.hide() } })
     AllMoveToGroupDialog(
         groupName = group?.name ?: "",
         onConfirm = { scope.launch { drawerState.hide() } })
@@ -222,6 +226,22 @@ private fun Preset(
             },
         ) {
             viewModel.showAllOpenInBrowserDialog()
+        }
+        RYSelectionChip(
+            modifier = Modifier,
+            content = stringResource(R.string.title_display),
+            selected = false,
+            selectedIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Title,
+                    contentDescription = stringResource(R.string.title_display),
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .size(20.dp),
+                )
+            },
+        ) {
+            viewModel.showAllTitleDisplayDialog()
         }
         RYSelectionChip(
             modifier = Modifier,

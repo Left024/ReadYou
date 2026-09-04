@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -32,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import me.ash.reader.R
+import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.ui.ext.collectAsStateValue
 import me.ash.reader.ui.interaction.alphaIndicationSelectable
 
@@ -230,6 +232,73 @@ fun AllParseFullContentDialog(
                         selected = enabled,
                     ) {
                         enabled = true
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+fun AllTitleDisplayDialog(
+    groupName: String,
+    groupOptionViewModel: GroupOptionViewModel = hiltViewModel(),
+    onConfirm: () -> Unit,
+) {
+    val groupOptionUiState = groupOptionViewModel.groupOptionUiState.collectAsStateValue()
+
+    if (groupOptionUiState.allTitleDisplayDialogVisible) {
+        var mode by remember {
+            mutableStateOf(Feed.TITLE_DISPLAY_FOLLOW_DEFAULT)
+        }
+
+        AlertDialog(
+            onDismissRequest = { groupOptionViewModel.hideAllTitleDisplayDialog() },
+            confirmButton = {
+                ApplyButton(
+                    onClick = {
+                        groupOptionViewModel.allTitleDisplay(mode) {
+                            groupOptionViewModel.hideAllTitleDisplayDialog()
+                            onConfirm()
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                CancelButton(onClick = { groupOptionViewModel.hideAllTitleDisplayDialog() })
+            },
+            title = { Text(stringResource(R.string.title_display)) },
+            icon = { Icon(imageVector = Icons.Outlined.Title, contentDescription = null) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        stringResource(
+                            R.string.group_configuration_description,
+                            stringResource(R.string.title_display),
+                            groupName,
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SingleChoiceItem(
+                        title = stringResource(R.string.title_display_follow_default),
+                        description = stringResource(R.string.title_display_follow_default_desc),
+                        selected = mode == Feed.TITLE_DISPLAY_FOLLOW_DEFAULT,
+                    ) {
+                        mode = Feed.TITLE_DISPLAY_FOLLOW_DEFAULT
+                    }
+                    SingleChoiceItem(
+                        title = stringResource(R.string.title_display_show),
+                        description = stringResource(R.string.title_display_show_desc),
+                        selected = mode == Feed.TITLE_DISPLAY_SHOW,
+                    ) {
+                        mode = Feed.TITLE_DISPLAY_SHOW
+                    }
+                    SingleChoiceItem(
+                        title = stringResource(R.string.title_display_hide),
+                        description = stringResource(R.string.title_display_hide_desc),
+                        selected = mode == Feed.TITLE_DISPLAY_HIDE,
+                    ) {
+                        mode = Feed.TITLE_DISPLAY_HIDE
                     }
                 }
             },

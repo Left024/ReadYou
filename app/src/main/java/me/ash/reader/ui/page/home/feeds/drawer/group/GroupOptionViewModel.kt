@@ -112,6 +112,25 @@ class GroupOptionViewModel @Inject constructor(
         _groupOptionUiState.update { it.copy(allOpenInBrowserDialogVisible = false) }
     }
 
+    fun allTitleDisplay(titleDisplayMode: Int, callback: () -> Unit = {}) {
+        _groupOptionUiState.value.group?.let {
+            viewModelScope.launch(ioDispatcher) {
+                rssService.get().groupTitleDisplay(it, titleDisplayMode)
+                withContext(mainDispatcher) {
+                    callback()
+                }
+            }
+        }
+    }
+
+    fun showAllTitleDisplayDialog() {
+        _groupOptionUiState.update { it.copy(allTitleDisplayDialogVisible = true) }
+    }
+
+    fun hideAllTitleDisplayDialog() {
+        _groupOptionUiState.update { it.copy(allTitleDisplayDialogVisible = false) }
+    }
+
     fun delete(callback: () -> Unit = {}) {
         _groupOptionUiState.value.group?.let {
             applicationScope.launch(ioDispatcher) {
@@ -221,6 +240,7 @@ data class GroupOptionUiState(
     val allAllowNotificationDialogVisible: Boolean = false,
     val allParseFullContentDialogVisible: Boolean = false,
     val allOpenInBrowserDialogVisible: Boolean = false,
+    val allTitleDisplayDialogVisible: Boolean = false,
     val allMoveToGroupDialogVisible: Boolean = false,
     val deleteDialogVisible: Boolean = false,
     val clearDialogVisible: Boolean = false,

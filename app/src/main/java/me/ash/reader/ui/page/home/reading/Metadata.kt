@@ -33,6 +33,7 @@ fun Metadata(
     publishedDate: Date,
     modifier: Modifier = Modifier,
     author: String? = null,
+    showTitle: Boolean = true,
 ) {
     val context = LocalContext.current
     val titleBold = LocalReadingTitleBold.current
@@ -60,20 +61,22 @@ fun Metadata(
             textAlign = titleAlign,
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            modifier = Modifier.fillMaxWidth(),
-            text = if (titleUpperCase.value) titleUpperCaseString else title,
-            color = MaterialTheme.colorScheme.onSurface,
-            style =
-                MaterialTheme.typography.headlineLarge
-                    .merge(
-                        fontFamily = fontFamily,
-                        fontWeight = if (titleBold.value) FontWeight.Bold else FontWeight.Medium,
-                    )
-                    .applyTextDirection(requiresBidi = title.requiresBidi()),
-            textAlign = titleAlign,
-        )
-        Spacer(modifier = Modifier.height(4.dp))
+        if (showTitle) {
+            Text(
+                modifier = Modifier.fillMaxWidth(),
+                text = if (titleUpperCase.value) titleUpperCaseString else title,
+                color = MaterialTheme.colorScheme.onSurface,
+                style =
+                    MaterialTheme.typography.headlineLarge
+                        .merge(
+                            fontFamily = fontFamily,
+                            fontWeight = if (titleBold.value) FontWeight.Bold else FontWeight.Medium,
+                        )
+                        .applyTextDirection(requiresBidi = title.requiresBidi()),
+                textAlign = titleAlign,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
         author?.let {
             if (it.isNotEmpty()) {
                 Text(

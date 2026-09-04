@@ -109,6 +109,8 @@ class SettingsProvider @Inject constructor(
             LocalReadingTheme provides settings.readingTheme,
             LocalReadingPageTonalElevation provides settings.readingPageTonalElevation,
             LocalReadingAutoHideToolbar provides settings.readingAutoHideToolbar,
+            LocalReadingTitleVisibility provides settings.readingTitleVisibility,
+            LocalReadingOpenLinkFab provides settings.readingOpenLinkFab,
             LocalReadingTextFontSize provides settings.readingTextFontSize,
             LocalReadingTextLineHeight provides settings.readingTextLineHeight,
             LocalReadingTextLetterSpacing provides settings.readingLetterSpacing,

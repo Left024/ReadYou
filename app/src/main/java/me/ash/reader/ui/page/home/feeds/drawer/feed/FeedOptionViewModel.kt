@@ -128,6 +128,15 @@ constructor(
         }
     }
 
+    fun setTitleDisplayMode(titleDisplayMode: Int) {
+        viewModelScope.launch(ioDispatcher) {
+            _feedOptionUiState.value.feed?.let {
+                rssService.get().updateFeed(it.copy(titleDisplayMode = titleDisplayMode))
+                fetchFeed(it.id)
+            }
+        }
+    }
+
     fun delete(callback: () -> Unit = {}) {
         _feedOptionUiState.value.feed?.let {
             applicationScope.launch(ioDispatcher) {
