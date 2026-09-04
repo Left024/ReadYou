@@ -225,6 +225,7 @@ constructor(
         feedId: String?,
         groupId: String?,
     ): ListenableWorker.Result {
+        beginSyncProgress()
         return if (feedId != null) {
             syncFeed(accountId, feedId)
         } else {
@@ -278,20 +279,27 @@ constructor(
                     .time / 1000
 
             val remoteUnreadIds = async {
-                fetchItemIdsAndContinue { googleReaderAPI.getUnreadItemIds(continuationId = it) }
+                fetchItemIdsAndContinue(
+                    onPage = { page -> reportProgress(5 + (7 * page / 20).coerceAtMost(7)) },
+                ) { googleReaderAPI.getUnreadItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
             }
 
             val remoteStarredIds = async {
-                fetchItemIdsAndContinue { googleReaderAPI.getStarredItemIds(continuationId = it) }
+                fetchItemIdsAndContinue(
+                    onPage = { page -> reportProgress(12 + (4 * page / 20).coerceAtMost(4)) },
+                ) { googleReaderAPI.getStarredItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
             }
 
             val isFreshRss = account.type.id == FreshRSS.id
             val remoteReadIds = async {
-                fetchItemIdsAndContinue {
+                // 已读 id 列表通常最大（近一月），占较多进度空间
+                fetchItemIdsAndContinue(
+                    onPage = { page -> reportProgress(16 + (14 * page / 20).coerceAtMost(14)) },
+                ) {
                         googleReaderAPI.getReadItemIds(
                             since = lastMonthAt,
                             continuationId = it,
@@ -564,7 +572,9 @@ constructor(
             val localIds = (localReadIds + localUnreadIds).toSet()
 
             val remoteUnreadIds = async {
-                fetchItemIdsAndContinue {
+                fetchItemIdsAndContinue(
+                    onPage = { page -> reportProgress(22 + (4 * page / 20).coerceAtMost(4)) },
+                ) {
                         googleReaderAPI.getItemIdsForFeed(
                             feedId = feedId.dollarLast(),
                             filterRead = true,
@@ -576,7 +586,10 @@ constructor(
             }
 
             val remoteAllIds = async {
-                fetchItemIdsAndContinue {
+                // 全部 id 列表一般最大，占大头进度
+                fetchItemIdsAndContinue(
+                    onPage = { page -> reportProgress(5 + (17 * page / 20).coerceAtMost(17)) },
+                ) {
                         googleReaderAPI.getItemIdsForFeed(
                             feedId = feedId.dollarLast(),
                             filterRead = false,
@@ -588,7 +601,9 @@ constructor(
             }
 
             val remoteStarredIds = async {
-                fetchItemIdsAndContinue { googleReaderAPI.getStarredItemIds(continuationId = it) }
+                fetchItemIdsAndContinue(
+                    onPage = { page -> reportProgress(26 + (4 * page / 20).coerceAtMost(4)) },
+                ) { googleReaderAPI.getStarredItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
             }
@@ -679,12 +694,18 @@ constructor(
         }
 
     private suspend fun fetchItemIdsAndContinue(
-        getItemIdsFunc: suspend (continuationId: String?) -> GoogleReaderDTO.ItemIds?
+        onPage: ((page: Int) -> Unit)? = null,
+        getItemIdsFunc: suspend (continuationId: String?) -> GoogleReaderDTO.ItemIds?,
     ): MutableList<String> {
+        var pageNo = 0
         var result = getItemIdsFunc(null)
+        pageNo++
+        onPage?.invoke(pageNo)
         val ids = result?.itemRefs?.mapNotNull { it.id }?.toMutableList() ?: return mutableListOf()
         while (result != null && result.continuation != null) {
             result = getItemIdsFunc(result.continuation)
+            pageNo++
+            onPage?.invoke(pageNo)
             result?.itemRefs?.mapNotNull { it.id }?.let { ids.addAll(it) }
         }
         return ids

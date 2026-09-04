@@ -47,8 +47,21 @@ abstract class AbstractRssRepository(
     @Volatile
     var onSyncProgress: ((Int) -> Unit)? = null
 
+    @Volatile
+    private var lastSyncProgress = -1
+
+    /** 在每次同步开始时调用，重置进度单调基线。 */
+    protected fun beginSyncProgress() {
+        lastSyncProgress = -1
+    }
+
+    /** 进度只增不减，避免并发阶段上报造成百分比回退。 */
     protected fun reportProgress(progress: Int) {
-        onSyncProgress?.invoke(progress.coerceIn(0, 100))
+        val clamped = progress.coerceIn(0, 100)
+        if (clamped >= lastSyncProgress) {
+            lastSyncProgress = clamped
+            onSyncProgress?.invoke(clamped)
+        }
     }
 
     open val importSubscription: Boolean = true

@@ -110,3 +110,4 @@ AGENTS.md
 *.aab
 
 apk/
+.rycheck/

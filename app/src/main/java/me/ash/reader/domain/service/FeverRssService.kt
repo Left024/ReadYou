@@ -149,6 +149,7 @@ constructor(
         groupId: String?,
     ): ListenableWorker.Result = coroutineScope {
         try {
+            beginSyncProgress()
             val preTime = System.currentTimeMillis()
             val preDate = Date(preTime)
             val account = accountService.getAccountById(accountId)!!
@@ -294,9 +295,9 @@ constructor(
                 val articleId = meta.id.dollarLast()
                 val shouldBeUnread = unreadArticleIds?.contains(articleId)
                 val shouldBeStarred = starredArticleIds?.contains(articleId)
-                if (meta.isUnread != shouldBeUnread) {
-                    if (!meta.isUnread && shouldBeUnread == true) {
-                        // 本地已读但远端未读：推送已读到远端，本地保持已读（避免同步把已读打回未读）
+                if (shouldBeUnread != null && meta.isUnread != shouldBeUnread) {
+                    if (!meta.isUnread) {
+                        // 本地已读但远端未读：推读远端，本地保持已读（避免同步把已读打回未读）
                         runCatching {
                             feverAPI.markItem(
                                 status = FeverDTO.StatusEnum.Read,
@@ -304,11 +305,8 @@ constructor(
                             )
                         }
                     } else {
-                        articleDao.markAsReadByArticleId(
-                            accountId,
-                            meta.id,
-                            shouldBeUnread ?: true,
-                        )
+                        // 本地未读且远端已读：本地标为已读
+                        articleDao.markAsReadByArticleId(accountId, meta.id, false)
                     }
                 }
                 if (meta.isStarred != shouldBeStarred) {

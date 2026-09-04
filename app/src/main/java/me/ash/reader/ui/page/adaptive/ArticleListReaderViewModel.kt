@@ -314,6 +314,22 @@ constructor(
 
             if (diffMapHolder.checkIfUnread(item)) {
                 diffMapHolder.updateDiff(item, isUnread = false)
+                // 打开文章即已读：除 UI overlay 外立即落库并推送远端，
+                // 避免刷新/后台同步期间列表重组后读状态丢失或被远端快照覆盖
+                val autoReadArticleId = item.article.id
+                launch(ioDispatcher) {
+                    runCatching {
+                        rssService
+                            .get()
+                            .markAsRead(
+                                groupId = null,
+                                feedId = null,
+                                articleId = autoReadArticleId,
+                                before = null,
+                                isUnread = false,
+                            )
+                    }
+                }
             }
             item.run {
                 _readingUiState.update {

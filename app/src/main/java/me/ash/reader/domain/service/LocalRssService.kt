@@ -62,6 +62,7 @@ constructor(
         groupId: String?
     ): ListenableWorker.Result = supervisorScope {
         return@supervisorScope runCatching {
+            beginSyncProgress()
             val preTime = System.currentTimeMillis()
             val preDate = Date(preTime)
             val currentAccount = accountService.getAccountById(accountId)!!

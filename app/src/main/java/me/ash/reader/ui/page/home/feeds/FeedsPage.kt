@@ -7,6 +7,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -31,6 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -134,10 +137,12 @@ fun FeedsPage(
     val owner = LocalLifecycleOwner.current
 
     var isSyncing by remember { mutableStateOf(false) }
+    var syncProgress by remember { mutableStateOf<Int?>(null) }
     val syncingState = rememberPullToRefreshState()
     val syncingScope = rememberCoroutineScope()
     val doSync: () -> Unit = {
         isSyncing = true
+        syncProgress = null
         syncingScope.launch { feedsViewModel.sync() }
     }
 
@@ -157,9 +162,14 @@ fun FeedsPage(
             }
         }
         feedsViewModel.syncWorkLiveData.observe(owner) { workInfoList ->
-            workInfoList.let {
-                isSyncing = it.any { workInfo -> workInfo.state == WorkInfo.State.RUNNING }
-            }
+            val running =
+                workInfoList.firstOrNull { workInfo -> workInfo.state == WorkInfo.State.RUNNING }
+            isSyncing = running != null
+            syncProgress =
+                running
+                    ?.progress
+                    ?.getInt("syncProgress", -1)
+                    ?.takeIf { progress -> progress in 0..100 }
         }
         onDispose { feedsViewModel.syncWorkLiveData.removeObservers(owner) }
     }
@@ -228,6 +238,7 @@ fun FeedsPage(
             )
         },
         content = {
+            Box(modifier = Modifier.fillMaxSize()) {
             PullToRefreshBox(state = syncingState, isRefreshing = isSyncing, onRefresh = doSync) {
                 LazyColumn(modifier = Modifier.fillMaxSize().drawVerticalScrollIndicator(listState), state = listState) {
                     item {
@@ -328,6 +339,26 @@ fun FeedsPage(
                         )
                     }
                 }
+            }
+            // 同步百分比：首页下拉刷新时显示在转圈下方
+            if (isSyncing && syncProgress != null) {
+                Surface(
+                    modifier =
+                        Modifier
+                            .statusBarsPadding()
+                            .padding(top = 112.dp)
+                            .align(Alignment.TopCenter),
+                    color = MaterialTheme.colorScheme.primaryFixedDim,
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Text(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                        text = "$syncProgress%",
+                        color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
             }
         },
         bottomBar = {
