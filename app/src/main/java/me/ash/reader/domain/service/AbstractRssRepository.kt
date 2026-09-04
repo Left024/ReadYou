@@ -43,6 +43,14 @@ abstract class AbstractRssRepository(
     private val accountService: AccountService,
 ) {
 
+    /** 同步进度上报（0-100），由 SyncWorker 挂载，用于刷新进度显示。 */
+    @Volatile
+    var onSyncProgress: ((Int) -> Unit)? = null
+
+    protected fun reportProgress(progress: Int) {
+        onSyncProgress?.invoke(progress.coerceIn(0, 100))
+    }
+
     open val importSubscription: Boolean = true
     open val addSubscription: Boolean = true
     open val moveSubscription: Boolean = true

@@ -7,6 +7,9 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import me.ash.reader.domain.model.account.Account
 import me.ash.reader.infrastructure.rss.ReaderCacheHelper
 import timber.log.Timber
@@ -36,6 +39,8 @@ constructor(
         }
     }
 
+    private val syncProgressScope = CoroutineScope(Dispatchers.Default)
+
     private suspend fun doWorkInternal(): Result {
         val data = inputData
         val accountId = data.getInt("accountId", -1)
@@ -48,24 +53,36 @@ constructor(
         val account = accountService.getAccountById(accountId) ?: return Result.failure()
         val service = rssService.get(account.type.id)
 
-        return service
-            .sync(accountId = accountId, feedId = feedId, groupId = groupId)
-            .let { result ->
-                // 达到重试上限后放弃本轮并返回 failure：
-                // 周期任务会被 WorkManager 重置（resetPeriodic），
-                // 下一个同步间隔照常运行，而不是陷入无限指数退避
-                if (result is Result.Retry && runAttemptCount >= MAX_RETRY_ATTEMPTS) {
-                    Timber.e("Sync failed after $runAttemptCount attempts, giving up this round")
-                    Result.failure()
-                } else result
+        // 挂载进度回调：服务内 reportProgress -> WorkManager setProgress，
+        // 供下拉刷新 UI 读取并显示百分比（工作结束后务必清理）
+        // 注意：CoroutineWorker.setProgress 是 suspend 函数，需在协程中调用
+        service.onSyncProgress = { progress ->
+            syncProgressScope.launch {
+                runCatching { setProgress(workDataOf("syncProgress" to progress)) }
             }
-            .let { result ->
-                if (result is Result.Success) {
-                    runCatching { doPostSync(service, accountId) }
-                        .onFailure { Timber.e(it, "Failed to run post-sync tasks") }
+        }
+        return try {
+            service
+                .sync(accountId = accountId, feedId = feedId, groupId = groupId)
+                .let { result ->
+                    // 达到重试上限后放弃本轮并返回 failure：
+                    // 周期任务会被 WorkManager 重置（resetPeriodic），
+                    // 下一个同步间隔照常运行，而不是陷入无限指数退避
+                    if (result is Result.Retry && runAttemptCount >= MAX_RETRY_ATTEMPTS) {
+                        Timber.e("Sync failed after $runAttemptCount attempts, giving up this round")
+                        Result.failure()
+                    } else result
                 }
-                result
-            }
+                .let { result ->
+                    if (result is Result.Success) {
+                        runCatching { doPostSync(service, accountId) }
+                            .onFailure { Timber.e(it, "Failed to run post-sync tasks") }
+                    }
+                    result
+                }
+        } finally {
+            service.onSyncProgress = null
+        }
     }
 
     private suspend fun doPostSync(service: AbstractRssRepository, accountId: Int) {

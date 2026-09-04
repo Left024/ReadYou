@@ -267,6 +267,7 @@ constructor(
             }
             val googleReaderAPI = getGoogleReaderAPI()
             googleReaderAPI.refreshCredentialsIfNeeded()
+            reportProgress(5)
             val lastMonthAt =
                 Calendar.getInstance()
                     .apply {
@@ -362,29 +363,21 @@ constructor(
             }
 
             launch {
-                val toBeUnreadLocal =
-                    localReadIds.intersect(remoteUnreadIds.await()).map {
-                        accountId spacerDollar it
+                // 本地已读但远端仍为未读：把已读推送给远端，本地保持已读。
+                // 不再把本地已读强制改回未读（远端快照早于本机操作时会导致已读丢失）。
+                // 推送失败无需处理：下一次同步仍会命中交集并重试，直到远端收敛。
+                val toBePushedRead =
+                    localReadIds.intersect(remoteUnreadIds.await()).toList()
+                toBePushedRead.chunked(500).forEach {
+                    runCatching {
+                        googleReaderAPI.editTag(
+                            itemIds = it,
+                            mark = GoogleReaderAPI.Stream.Read.tag,
+                            unmark = null,
+                        )
                     }
-                toBeUnreadLocal.chunked(1000).forEach {
-                    articleDao.markAsReadByIdSet(
-                        accountId = accountId,
-                        ids = it.toSet(),
-                        isUnread = true,
-                    )
                 }
             }
-
-            //
-            //            launch {
-            //                val toBeReadRemote = localReadIds.intersect(remoteUnreadIds.await())
-            //                if (toBeReadRemote.isNotEmpty()) {
-            //                    googleReaderAPI.editTag(
-            //                        itemIds = toBeReadRemote.toList(),
-            //                        mark = GoogleReaderAPI.Stream.Read.tag,
-            //                    )
-            //                }
-            //            }
 
             // 2. Fetch folder and subscription list
             val groupWithFeedsMap = async {
@@ -439,6 +432,7 @@ constructor(
                         scope = this,
                     )
                     .toMutableList()
+            reportProgress(30)
 
             val remoteGroups = async { groupWithFeedsMap.await().keys.toList() }
             val remoteFeeds = async { groupWithFeedsMap.await().values.flatten() }
@@ -470,10 +464,16 @@ constructor(
             val articlesToNotify = mutableListOf<Article>()
 
             if (deferredList.isNotEmpty()) {
+                val contentTotal = deferredList.size
+                var contentDone = 0
                 launch {
                         whileSelect {
                             for (deferred in deferredList) {
                                 deferred.onAwait {
+                                    contentDone++
+                                    reportProgress(
+                                        30 + (60 * contentDone / contentTotal).coerceAtMost(60)
+                                    )
                                     articleDao.insertList(it)
                                     articlesToNotify.addAll(
                                         it.fastFilter {
@@ -496,7 +496,11 @@ constructor(
                                 }
                         }
                     }
+            } else {
+                reportProgress(90)
             }
+
+            reportProgress(90)
 
             // 8. Remove orphaned groups and feeds, after synchronizing the
             // starred/un-starred
@@ -509,6 +513,7 @@ constructor(
                 .filter { it.id !in remoteFeeds.await().map { feed -> feed.id } }
                 .forEach { super.deleteFeed(it, true) }
 
+            reportProgress(100)
             accountService.update(account.copy(updateAt = Date()))
             ListenableWorker.Result.success()
         } catch (e: Exception) {
@@ -589,6 +594,7 @@ constructor(
             }
 
             val toFetch = remoteAllIds.await() - localIds
+            reportProgress(30)
 
             val items =
                 fetchItemsContents(
@@ -598,6 +604,7 @@ constructor(
                     unreadIds = remoteUnreadIds.await(),
                     starredIds = remoteStarredIds.await(),
                 )
+            reportProgress(88)
 
             if (feed.isNotification) {
                 val articlesToNotify = items.fastFilter { it.isUnread }
@@ -621,17 +628,18 @@ constructor(
             }
 
             launch {
-                val toBeUnreadIds = localReadIds.intersect(remoteUnreadIds.await())
-                toBeUnreadIds
-                    .map { it.dbId(accountId) }
-                    .chunked(1000)
-                    .forEach {
-                        articleDao.markAsReadByIdSet(
-                            accountId = accountId,
-                            ids = it.toSet(),
-                            isUnread = true,
+                // 本地已读但远端仍为未读：推读远端，本地保持已读（参见整账户同步的说明）
+                val toBePushedReadIds =
+                    localReadIds.intersect(remoteUnreadIds.await()).map { it.dollarLast() }.toList()
+                toBePushedReadIds.chunked(500).forEach {
+                    runCatching {
+                        googleReaderAPI.editTag(
+                            itemIds = it,
+                            mark = GoogleReaderAPI.Stream.Read.tag,
+                            unmark = null,
                         )
                     }
+                }
             }
 
             launch {
@@ -664,6 +672,7 @@ constructor(
             }
 
             articleDao.insert(*items.toTypedArray())
+            reportProgress(100)
             Timber.i("onCompletion: ${System.currentTimeMillis() - preTime}")
 
             ListenableWorker.Result.success()

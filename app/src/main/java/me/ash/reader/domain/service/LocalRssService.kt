@@ -5,6 +5,7 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Date
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +77,10 @@ constructor(
                     else -> feedDao.queryAll(accountId)
                 }
 
+            val totalFeeds = feedsToSync.size.coerceAtLeast(1)
+            val completedFeeds = AtomicInteger(0)
+            reportProgress(10)
+
             feedsToSync
                 .mapIndexed { _, currentFeed ->
                     async(Dispatchers.IO) {
@@ -101,11 +106,14 @@ constructor(
                                     fetchedFeed.copy(articles = newArticles, feed = currentFeed)
                                 )
                             }
+                            val done = completedFeeds.incrementAndGet()
+                            reportProgress(10 + (90 * done / totalFeeds).coerceAtMost(90))
                         }
                     }
                 }
                 .awaitAll()
 
+            reportProgress(100)
             Timber.tag("RlOG").i("onCompletion: ${System.currentTimeMillis() - preTime}")
             accountService.update(currentAccount.copy(updateAt = Date()))
             ListenableWorker.Result.success()

@@ -168,6 +168,7 @@ constructor(
                     )
                 } ?: emptyList()
             groupDao.insertOrUpdate(groups)
+            reportProgress(10)
 
             // 2. Fetch the Fever feeds
             val feedsBody = feverAPI.getFeeds()
@@ -213,11 +214,13 @@ constructor(
                     .map { it.copy(icon = rssHelper.queryRssIconLink(it.url)) }
                     .toTypedArray()
             )
+            reportProgress(25)
 
             // 3. Fetch the Fever articles (up to unlimited counts)
             val allArticles = mutableListOf<Article>()
 
             var lastSeenId = account.lastArticleId?.dollarLast() ?: ""
+            var pageNo = 0
 
             while (true) {
                 val itemsBody = feverAPI.getItemsSince(lastSeenId)
@@ -251,6 +254,9 @@ constructor(
                     }
 
                 allArticles.addAll(articlesFromBatch)
+                pageNo++
+                // 翻页拉取进度（批次估算，最多按 40 页封顶）
+                reportProgress((30 + 55 * pageNo / 40).coerceAtMost(85))
 
                 lastSeenId = fetchedItems.lastOrNull()?.id ?: break
 
@@ -258,13 +264,18 @@ constructor(
                     break
                 }
             }
+            reportProgress(85)
 
             if (allArticles.isNotEmpty()) {
-                articleDao.insert(*allArticles.toTypedArray())
+                // 已存在行不覆盖（保留本地已读/星标状态），只入库新增文章
+                val existingArticleIds =
+                    articleDao.queryMetadataAll(accountId).map { it.id }.toSet()
+                articleDao.insertOnConflictIgnore(*allArticles.toTypedArray())
+                val newArticles = allArticles.filterNot { existingArticleIds.contains(it.id) }
                 val notificationFeeds =
                     feedDao.queryNotificationEnabled(accountId).associateBy { it.id }
                 val notificationFeedIds = notificationFeeds.keys
-                allArticles
+                newArticles
                     .fastFilter { it.isUnread && it.feedId in notificationFeedIds }
                     .groupBy { it.feedId }
                     .mapKeys { (feedId, _) -> notificationFeeds[feedId]!! }
@@ -275,12 +286,30 @@ constructor(
             val unreadArticleIds = feverAPI.getUnreadItems().unread_item_ids?.split(",")
             val starredArticleIds = feverAPI.getSavedItems().saved_item_ids?.split(",")
             val articleMeta = articleDao.queryMetadataAll(accountId)
-            for (meta: ArticleMeta in articleMeta) {
+            val metaTotal = articleMeta.size.coerceAtLeast(1)
+            for ((metaIndex, meta: ArticleMeta) in articleMeta.withIndex()) {
+                if (metaIndex % 200 == 0) {
+                    reportProgress(88 + (10 * metaIndex / metaTotal).coerceAtMost(10))
+                }
                 val articleId = meta.id.dollarLast()
                 val shouldBeUnread = unreadArticleIds?.contains(articleId)
                 val shouldBeStarred = starredArticleIds?.contains(articleId)
                 if (meta.isUnread != shouldBeUnread) {
-                    articleDao.markAsReadByArticleId(accountId, meta.id, shouldBeUnread ?: true)
+                    if (!meta.isUnread && shouldBeUnread == true) {
+                        // 本地已读但远端未读：推送已读到远端，本地保持已读（避免同步把已读打回未读）
+                        runCatching {
+                            feverAPI.markItem(
+                                status = FeverDTO.StatusEnum.Read,
+                                id = articleId,
+                            )
+                        }
+                    } else {
+                        articleDao.markAsReadByArticleId(
+                            accountId,
+                            meta.id,
+                            shouldBeUnread ?: true,
+                        )
+                    }
                 }
                 if (meta.isStarred != shouldBeStarred) {
                     articleDao.markAsStarredByArticleId(
@@ -290,6 +319,7 @@ constructor(
                     )
                 }
             }
+            reportProgress(100)
 
             // Remove orphaned groups and feeds, after synchronizing the starred/un-starred
             val groupIds = groups.map { it.id }

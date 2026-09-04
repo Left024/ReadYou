@@ -305,6 +305,7 @@ fun FlowPage(
     }
 
     val isSyncing = viewModel.isSyncingFlow.collectAsStateValue()
+    val syncProgress = viewModel.syncProgress.collectAsStateValue()
 
     Box(modifier = Modifier.fillMaxSize()) {
         RYScaffold(
@@ -735,7 +736,11 @@ fun FlowPage(
             },
         )
         currentPullToLoadState?.let {
-            PullToSyncIndicator(pullToLoadState = it, isSyncing = isSyncing)
+            PullToSyncIndicator(
+                pullToLoadState = it,
+                isSyncing = isSyncing,
+                progress = if (isSyncing) syncProgress else null,
+            )
             PullToLoadIndicator(
                 state = it,
                 loadAction = currentLoadAction,

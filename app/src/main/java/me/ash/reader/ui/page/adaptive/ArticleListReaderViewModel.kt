@@ -131,12 +131,31 @@ constructor(
             .map { it.any { workInfo -> workInfo.state == WorkInfo.State.RUNNING } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    private val syncProgressFlow =
+        workManager
+            .getWorkInfosByTagFlow(SyncWorker.SYNC_TAG)
+            .map { workInfos ->
+                workInfos
+                    .filter { it.state == WorkInfo.State.RUNNING }
+                    .mapNotNull {
+                        it.progress.getInt("syncProgress", -1).takeIf { p -> p in 0..100 }
+                    }
+                    .maxOrNull()
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private val _isSyncingFlow = MutableStateFlow(false)
     val isSyncingFlow = _isSyncingFlow.asStateFlow()
+
+    private val _syncProgress = MutableStateFlow<Int?>(null)
+    val syncProgress = _syncProgress.asStateFlow()
 
     init {
         viewModelScope.launch {
             syncWorkerStatusFlow.debounce(500L).collect { _isSyncingFlow.value = it }
+        }
+        viewModelScope.launch {
+            syncProgressFlow.debounce(150L).collect { _syncProgress.value = it }
         }
     }
 
