@@ -63,13 +63,12 @@ fun BoxScope.PullToSyncIndicator(
 
     var showIndeterminateIndicator by remember { mutableStateOf(isSyncing) }
 
-    // 显示用百分比：向真实进度平滑爬升；真实进度长时间停滞时缓慢兜底爬升
-    // （约 0.7s +1%，封顶 96），避免同步中段停住不动、结束时瞬间冲到 100
+    // 显示用百分比：向真实进度快速平滑（约 200ms 内跟上），不做假进度——
+    // 真实进度停滞时显示值就停在真实位置，100% 一定落在同步真实完成的时刻
     var displayedPercent by remember { mutableStateOf(progress ?: 0) }
     val currentProgress by rememberUpdatedState(progress)
     LaunchedEffect(isSyncing) {
         if (!isSyncing) return@LaunchedEffect
-        // 新一轮同步开始，把上一轮残留的高值压回当前真实进度
         val target = currentProgress
         if (target != null && target in 0..100) {
             if (displayedPercent > target) displayedPercent = target
@@ -79,14 +78,11 @@ fun BoxScope.PullToSyncIndicator(
         while (true) {
             val real = currentProgress
             if (real != null && real in 0..100 && displayedPercent < real) {
-                val step = ((real - displayedPercent) / 4).coerceAtLeast(1)
+                val step = ((real - displayedPercent) / 2).coerceAtLeast(1)
                 displayedPercent = (displayedPercent + step).coerceAtMost(real)
-                delay(70)
-            } else if (displayedPercent < 96) {
-                displayedPercent += 1
-                delay(700)
+                delay(60)
             } else {
-                delay(300)
+                delay(150)
             }
         }
     }

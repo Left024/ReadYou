@@ -10,6 +10,7 @@ import com.rometools.rome.feed.synd.SyndFeed
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Calendar
 import java.util.Date
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.collections.chunked
 import kotlin.collections.toSet
@@ -271,7 +272,7 @@ constructor(
             }
             val googleReaderAPI = getGoogleReaderAPI()
             googleReaderAPI.refreshCredentialsIfNeeded()
-            reportProgress(5)
+            val planner = SyncProgressPlanner(::reportProgress)
             val lastMonthAt =
                 Calendar.getInstance()
                     .apply {
@@ -283,8 +284,8 @@ constructor(
 
             val remoteUnreadIds = async {
                 fetchItemIdsAndContinue(
-                    // 每页固定 +2%，page 从 1 开始；避免整数除法截断导致进度长时间不动
-                    onPage = { page -> reportProgress(5 + (2 * page).coerceAtMost(7)) },
+                    // 每次分页网络往返 +1%（页数未知时用封顶预算，见 SyncProgressPlanner）
+                    onPage = { planner.phase1Step() },
                 ) { googleReaderAPI.getUnreadItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
@@ -292,7 +293,7 @@ constructor(
 
             val remoteStarredIds = async {
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(12 + (2 * page).coerceAtMost(4)) },
+                    onPage = { planner.phase1Step() },
                 ) { googleReaderAPI.getStarredItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
@@ -300,9 +301,9 @@ constructor(
 
             val isFreshRss = account.type.id == FreshRSS.id
             val remoteReadIds = async {
-                // 已读 id 列表通常最大（近一月），占较多进度空间
+                // 已读 id 列表通常最大（近一月），同样按页计步
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(16 + (2 * page).coerceAtMost(14)) },
+                    onPage = { planner.phase1Step() },
                 ) {
                         googleReaderAPI.getReadItemIds(
                             since = lastMonthAt,
@@ -384,9 +385,8 @@ constructor(
                 // 推送失败无需处理：下一次同步仍会命中交集并重试，直到远端收敛。
                 val toBePushedRead =
                     localReadIds.intersect(remoteUnreadIds.await()).toList()
-                val chunks = toBePushedRead.chunked(500)
-                // 历史积压时推送是同步里最耗时的网络步骤，按 chunk 上报进度（40..55）
-                chunks.forEachIndexed { index, it ->
+                // 历史积压时推送是同步里最耗时的网络步骤，每批推送完成报一步
+                toBePushedRead.chunked(500).forEach {
                     runCatching {
                         googleReaderAPI.editTag(
                             itemIds = it,
@@ -394,10 +394,7 @@ constructor(
                             unmark = null,
                         )
                     }
-                    reportProgress(40 + (15 * (index + 1) / chunks.size).coerceAtMost(15))
-                }
-                if (chunks.isNotEmpty()) {
-                    reportProgress(55)
+                    planner.phase2Step()
                 }
             }
 
@@ -454,7 +451,6 @@ constructor(
                         scope = this,
                     )
                     .toMutableList()
-            reportProgress(30)
 
             val remoteGroups = async { groupWithFeedsMap.await().keys.toList() }
             val remoteFeeds = async { groupWithFeedsMap.await().values.flatten() }
@@ -478,10 +474,15 @@ constructor(
             }
 
             val groupsResolved = remoteGroups.await()
-            reportProgress(38)
+            planner.phase1Step(units = 2) // 订阅列表：1 次网络请求
             groupDao.insertOrUpdate(groupsResolved)
             feedDao.insertOrUpdate(remoteFeeds.await())
-            reportProgress(45)
+
+            // 进入阶段 2：此时内容批数（deferredList.size，每批 100 条）与推送批数
+            // （每批 500 条）都已知，剩余预算按这些真实单元 + 2 段收尾平均分配
+            val pushChunkCount =
+                (localReadIds.intersect(remoteUnreadIds.await()).size + 499) / 500
+            planner.beginPhase2(deferredList.size + pushChunkCount + 2)
 
             val notificationFeeds =
                 feedDao.queryNotificationEnabled(accountId).associateBy { it.id }
@@ -490,17 +491,12 @@ constructor(
 
             val contentJob =
                 if (deferredList.isNotEmpty()) {
-                    val contentTotal = deferredList.size
-                    var contentDone = 0
                     val job =
                         launch {
                             whileSelect {
                                 for (deferred in deferredList) {
                                     deferred.onAwait {
-                                        contentDone++
-                                        reportProgress(
-                                            30 + (60 * contentDone / contentTotal).coerceAtMost(60)
-                                        )
+                                        planner.phase2Step()
                                         articleDao.insertList(it)
                                         articlesToNotify.addAll(
                                             it.fastFilter {
@@ -525,15 +521,12 @@ constructor(
                     }
                     job
                 } else {
-                    // 没有新文章内容要抓取时，也逐步上报而不是直接跳到 90
-                    reportProgress(60)
+                    // 没有新文章内容要抓取
                     null
                 }
 
-            // 等新文章内容全部抓取完成后再进入收尾，避免过早报高值把内容阶段的
-            // 中间进度（30..88）全部吞掉
+            // 等新文章内容全部抓取完成后进入收尾
             contentJob?.join()
-            reportProgress(70)
 
             // 8. Remove orphaned groups and feeds, after synchronizing the
             // starred/un-starred
@@ -546,8 +539,8 @@ constructor(
                 .filter { it.id !in remoteFeeds.await().map { feed -> feed.id } }
                 .forEach { super.deleteFeed(it, true) }
 
-            reportProgress(90)
-            reportProgress(100)
+            planner.phase2Step() // 收尾单元 1：孤儿清理完成
+            planner.phase2Step() // 收尾单元 2：全部完成 → 100%
             accountService.update(account.copy(updateAt = Date()))
             ListenableWorker.Result.success()
         } catch (e: Exception) {
@@ -574,6 +567,7 @@ constructor(
                 "account type is invalid"
             }
             val googleReaderAPI = getGoogleReaderAPI()
+            val planner = SyncProgressPlanner(::reportProgress)
 
             val feed = feedDao.queryById(feedId)!!
 
@@ -599,7 +593,7 @@ constructor(
 
             val remoteUnreadIds = async {
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(22 + (2 * page).coerceAtMost(4)) },
+                    onPage = { planner.phase1Step() },
                 ) {
                         googleReaderAPI.getItemIdsForFeed(
                             feedId = feedId.dollarLast(),
@@ -612,9 +606,9 @@ constructor(
             }
 
             val remoteAllIds = async {
-                // 全部 id 列表一般最大，占大头进度；每页 +2%，page 从 1 开始
+                // 全部 id 列表一般最大，占大头进度；同样按页计步
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(5 + (2 * page).coerceAtMost(17)) },
+                    onPage = { planner.phase1Step() },
                 ) {
                         googleReaderAPI.getItemIdsForFeed(
                             feedId = feedId.dollarLast(),
@@ -628,14 +622,14 @@ constructor(
 
             val remoteStarredIds = async {
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(26 + (2 * page).coerceAtMost(4)) },
+                    onPage = { planner.phase1Step() },
                 ) { googleReaderAPI.getStarredItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
             }
 
             val toFetch = remoteAllIds.await() - localIds
-            reportProgress(30)
+            val contentUnits = (toFetch.size + 99) / 100
 
             val items =
                 fetchItemsContents(
@@ -645,7 +639,12 @@ constructor(
                     unreadIds = remoteUnreadIds.await(),
                     starredIds = remoteStarredIds.await(),
                 )
-            reportProgress(70)
+
+            // 内容整体拉完，一次性走完内容单元；剩余预算按推送批数 + 2 段收尾分配
+            val pushChunkCount =
+                (localReadIds.intersect(remoteUnreadIds.await()).size + 499) / 500
+            planner.beginPhase2(contentUnits + pushChunkCount + 2)
+            planner.phase2Step(units = contentUnits)
 
             if (feed.isNotification) {
                 val articlesToNotify = items.fastFilter { it.isUnread }
@@ -676,7 +675,7 @@ constructor(
                 val chunks =
                     localReadIds.intersect(remoteUnreadIds.await()).map { it.dollarLast() }
                         .chunked(500)
-                chunks.forEachIndexed { index, it ->
+                chunks.forEach {
                     runCatching {
                         googleReaderAPI.editTag(
                             itemIds = it,
@@ -684,10 +683,7 @@ constructor(
                             unmark = null,
                         )
                     }
-                    reportProgress(72 + (8 * (index + 1) / chunks.size).coerceAtMost(8))
-                }
-                if (chunks.isNotEmpty()) {
-                    reportProgress(80)
+                    planner.phase2Step()
                 }
             }
 
@@ -721,8 +717,8 @@ constructor(
             }
 
             articleDao.insert(*items.toTypedArray())
-            reportProgress(90)
-            reportProgress(100)
+            planner.phase2Step() // 收尾单元 1：入库完成
+            planner.phase2Step() // 收尾单元 2：全部完成 → 100%
             Timber.i("onCompletion: ${System.currentTimeMillis() - preTime}")
 
             ListenableWorker.Result.success()
@@ -928,5 +924,66 @@ constructor(
                 mark = if (isStarred) GoogleReaderAPI.Stream.Starred.tag else null,
                 unmark = if (!isStarred) GoogleReaderAPI.Stream.Starred.tag else null,
             )
+    }
+}
+
+/**
+ * 动态预算进度计划器（GR 同步用）。
+ *
+ * 进度 = 已完成请求单元 / 估算总单元，每一步都对应真实完成的网络/DB 工作：
+ * - 阶段 1（id 列表分页 + 订阅列表，总页数未知）：每次网络往返 +1%，
+ *   封顶 [PHASE1_BUDGET]；页数超过封顶时冻结在封顶值，等阶段 1 结束重分配。
+ * - 阶段 2（新文章内容、已读推送、收尾）：此时总量已全部已知，把剩余预算
+ *   按已知的请求单元数平均分配，保证 100% 落在同步真实完成的时刻，
+ *   不做任何假进度。
+ */
+private class SyncProgressPlanner(
+    private val report: (Int) -> Unit,
+) {
+    /** 阶段 1 预算：id 分页每页 1%（最多 30 页）+ 订阅列表 2% */
+    private val phase1Budget = 32
+    private val phase1Units = AtomicInteger(0)
+    private val phase2DoneUnits = AtomicInteger(0)
+    @Volatile
+    private var phase2 = false
+    @Volatile
+    private var phase2TotalUnits = 1
+    @Volatile
+    private var current = 0
+
+    /** 阶段 1：完成一次网络往返（id 列表一页 = 1 单元，订阅列表一次 = 2 单元） */
+    fun phase1Step(units: Int = 1) {
+        if (phase2) return
+        val done = phase1Units.addAndGet(units)
+        publish(minOf(phase1Budget, done))
+    }
+
+    /** 进入阶段 2：剩余预算按 [totalUnits] 个已知工作单元平均分配 */
+    fun beginPhase2(totalUnits: Int) {
+        if (phase2) return
+        phase2TotalUnits = totalUnits.coerceAtLeast(1)
+        phase2 = true
+        publishPhase2()
+    }
+
+    /** 阶段 2：完成 [units] 个工作单元（一批内容 / 一批推送 / 一段收尾） */
+    fun phase2Step(units: Int = 1) {
+        phase2DoneUnits.addAndGet(units)
+        publishPhase2()
+    }
+
+    private fun publishPhase2() {
+        if (!phase2) return
+        val fraction =
+            (phase2DoneUnits.get().toDouble() / phase2TotalUnits).coerceAtMost(1.0)
+        publish(current + ((100 - current) * fraction).toInt())
+    }
+
+    @Synchronized
+    private fun publish(value: Int) {
+        if (value > current) {
+            current = value
+            report(value)
+        }
     }
 }
