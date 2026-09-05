@@ -220,7 +220,8 @@ fun FeedsPage(
 
     BackHandler(true) { context.findActivity()?.moveTaskToBack(false) }
 
-    RYScaffold(
+    Box(modifier = Modifier.fillMaxSize()) {
+        RYScaffold(
         topBarTonalElevation = topBarTonalElevation.value.dp,
         //        containerTonalElevation = groupListTonalElevation.value.dp,
         topBar = {
@@ -390,14 +391,6 @@ fun FeedsPage(
                         )
                     }
                 }
-                // 下拉同步指示：与文章信息流页同款（下拉进度 / 同步中转圈+百分比）
-                currentPullToLoadState?.let {
-                    PullToSyncIndicator(
-                        pullToLoadState = it,
-                        isSyncing = isSyncing,
-                        progress = if (isSyncing) syncProgress else null,
-                    )
-                }
             }
         },
         bottomBar = {
@@ -419,6 +412,17 @@ fun FeedsPage(
             }
         },
     )
+
+    // 下拉同步指示：与文章信息流页同款（下拉进度 / 同步中转圈+百分比），
+    // 放在 Scaffold 外层 Box，按屏幕顶部定位，与信息流页位置一致
+    currentPullToLoadState?.let {
+        PullToSyncIndicator(
+            pullToLoadState = it,
+            isSyncing = isSyncing,
+            progress = if (isSyncing) syncProgress else null,
+        )
+    }
+}
 
     SubscribeDialog(subscribeViewModel = subscribeViewModel)
 
