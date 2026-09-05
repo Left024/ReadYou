@@ -283,7 +283,8 @@ constructor(
 
             val remoteUnreadIds = async {
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(5 + (7 * page / 20).coerceAtMost(7)) },
+                    // 每页固定 +2%，page 从 1 开始；避免整数除法截断导致进度长时间不动
+                    onPage = { page -> reportProgress(5 + (2 * page).coerceAtMost(7)) },
                 ) { googleReaderAPI.getUnreadItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
@@ -291,7 +292,7 @@ constructor(
 
             val remoteStarredIds = async {
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(12 + (4 * page / 20).coerceAtMost(4)) },
+                    onPage = { page -> reportProgress(12 + (2 * page).coerceAtMost(4)) },
                 ) { googleReaderAPI.getStarredItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
@@ -301,7 +302,7 @@ constructor(
             val remoteReadIds = async {
                 // 已读 id 列表通常最大（近一月），占较多进度空间
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(16 + (14 * page / 20).coerceAtMost(14)) },
+                    onPage = { page -> reportProgress(16 + (2 * page).coerceAtMost(14)) },
                 ) {
                         googleReaderAPI.getReadItemIds(
                             since = lastMonthAt,
@@ -472,36 +473,39 @@ constructor(
 
             groupDao.insertOrUpdate(remoteGroups.await())
             feedDao.insertOrUpdate(remoteFeeds.await())
+            reportProgress(45)
 
             val notificationFeeds =
                 feedDao.queryNotificationEnabled(accountId).associateBy { it.id }
             val notificationFeedIds = notificationFeeds.keys
             val articlesToNotify = mutableListOf<Article>()
 
-            if (deferredList.isNotEmpty()) {
-                val contentTotal = deferredList.size
-                var contentDone = 0
-                launch {
-                        whileSelect {
-                            for (deferred in deferredList) {
-                                deferred.onAwait {
-                                    contentDone++
-                                    reportProgress(
-                                        30 + (60 * contentDone / contentTotal).coerceAtMost(60)
-                                    )
-                                    articleDao.insertList(it)
-                                    articlesToNotify.addAll(
-                                        it.fastFilter {
-                                            it.isUnread && notificationFeedIds.contains(it.feedId)
-                                        }
-                                    )
-                                    deferredList.remove(deferred)
-                                    deferredList.isNotEmpty()
+            val contentJob =
+                if (deferredList.isNotEmpty()) {
+                    val contentTotal = deferredList.size
+                    var contentDone = 0
+                    val job =
+                        launch {
+                            whileSelect {
+                                for (deferred in deferredList) {
+                                    deferred.onAwait {
+                                        contentDone++
+                                        reportProgress(
+                                            30 + (60 * contentDone / contentTotal).coerceAtMost(60)
+                                        )
+                                        articleDao.insertList(it)
+                                        articlesToNotify.addAll(
+                                            it.fastFilter {
+                                                it.isUnread && notificationFeedIds.contains(it.feedId)
+                                            }
+                                        )
+                                        deferredList.remove(deferred)
+                                        deferredList.isNotEmpty()
+                                    }
                                 }
                             }
                         }
-                    }
-                    .invokeOnCompletion {
+                    job.invokeOnCompletion {
                         launch {
                             articlesToNotify
                                 .groupBy { it.feedId }
@@ -511,10 +515,16 @@ constructor(
                                 }
                         }
                     }
-            } else {
-                reportProgress(90)
-            }
+                    job
+                } else {
+                    // 没有新文章内容要抓取时，也逐步上报而不是直接跳到 90
+                    reportProgress(60)
+                    null
+                }
 
+            // 等新文章内容全部抓取完成后再报 90，避免过早的 90 把内容阶段的
+            // 中间进度（30..88）全部吞掉
+            contentJob?.join()
             reportProgress(90)
 
             // 8. Remove orphaned groups and feeds, after synchronizing the
@@ -580,7 +590,7 @@ constructor(
 
             val remoteUnreadIds = async {
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(22 + (4 * page / 20).coerceAtMost(4)) },
+                    onPage = { page -> reportProgress(22 + (2 * page).coerceAtMost(4)) },
                 ) {
                         googleReaderAPI.getItemIdsForFeed(
                             feedId = feedId.dollarLast(),
@@ -593,9 +603,9 @@ constructor(
             }
 
             val remoteAllIds = async {
-                // 全部 id 列表一般最大，占大头进度
+                // 全部 id 列表一般最大，占大头进度；每页 +2%，page 从 1 开始
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(5 + (17 * page / 20).coerceAtMost(17)) },
+                    onPage = { page -> reportProgress(5 + (2 * page).coerceAtMost(17)) },
                 ) {
                         googleReaderAPI.getItemIdsForFeed(
                             feedId = feedId.dollarLast(),
@@ -609,7 +619,7 @@ constructor(
 
             val remoteStarredIds = async {
                 fetchItemIdsAndContinue(
-                    onPage = { page -> reportProgress(26 + (4 * page / 20).coerceAtMost(4)) },
+                    onPage = { page -> reportProgress(26 + (2 * page).coerceAtMost(4)) },
                 ) { googleReaderAPI.getStarredItemIds(continuationId = it) }
                     .map { it.shortId }
                     .toSet()
@@ -626,7 +636,7 @@ constructor(
                     unreadIds = remoteUnreadIds.await(),
                     starredIds = remoteStarredIds.await(),
                 )
-            reportProgress(88)
+            reportProgress(70)
 
             if (feed.isNotification) {
                 val articlesToNotify = items.fastFilter { it.isUnread }
@@ -697,6 +707,7 @@ constructor(
             }
 
             articleDao.insert(*items.toTypedArray())
+            reportProgress(90)
             reportProgress(100)
             Timber.i("onCompletion: ${System.currentTimeMillis() - preTime}")
 

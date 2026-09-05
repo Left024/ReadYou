@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtMost
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -60,6 +61,21 @@ fun BoxScope.PullToSyncIndicator(
         remember(pullToLoadState) { snapshotFlow { pullToLoadState.offsetFraction } }
 
     var showIndeterminateIndicator by remember { mutableStateOf(isSyncing) }
+
+    // 显示用百分比：向真实进度平滑爬升，让离散的上报点（如 7% → 14% → 90%）
+    // 在 UI 上呈现为连续的中间过程
+    var displayedPercent by remember { mutableStateOf(progress ?: 0) }
+    LaunchedEffect(progress) {
+        val target = progress
+        if (target != null && target in 0..100) {
+            if (displayedPercent > target) displayedPercent = target
+            while (displayedPercent < target) {
+                val step = ((target - displayedPercent) / 4).coerceAtLeast(1)
+                displayedPercent = (displayedPercent + step).coerceAtMost(target)
+                delay(70)
+            }
+        }
+    }
 
     val isSyncingFlow = snapshotFlow { isSyncing }
 
@@ -168,7 +184,7 @@ fun BoxScope.PullToSyncIndicator(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "$percent%",
+                        text = "$displayedPercent%",
                         color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
                         style = MaterialTheme.typography.labelMedium,
                     )
