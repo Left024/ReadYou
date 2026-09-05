@@ -474,7 +474,7 @@ constructor(
             }
 
             val groupsResolved = remoteGroups.await()
-            planner.phase1Step(units = 2) // 订阅列表：1 次网络请求
+            planner.phase1Step() // 订阅列表：1 次网络请求
             groupDao.insertOrUpdate(groupsResolved)
             feedDao.insertOrUpdate(remoteFeeds.await())
 
@@ -940,8 +940,11 @@ constructor(
 private class SyncProgressPlanner(
     private val report: (Int) -> Unit,
 ) {
-    /** 阶段 1 预算：id 分页每页 1%（最多 30 页）+ 订阅列表 2% */
-    private val phase1Budget = 32
+    /** 阶段 1 每完成一个单元（id 列表一页 / 订阅列表一次）的百分比步长 */
+    private val phase1UnitPercent = 2
+
+    /** 阶段 1 封顶：最多 48 个单元（含订阅列表）× 每单元 2%；页数超过封顶时冻结，阶段 1 结束重分配 */
+    private val phase1Budget = 96
     private val phase1Units = AtomicInteger(0)
     private val phase2DoneUnits = AtomicInteger(0)
     @Volatile
@@ -951,11 +954,11 @@ private class SyncProgressPlanner(
     @Volatile
     private var current = 0
 
-    /** 阶段 1：完成一次网络往返（id 列表一页 = 1 单元，订阅列表一次 = 2 单元） */
+    /** 阶段 1：完成一次网络往返（id 列表一页 = 1 单元，订阅列表一次 = 1 单元） */
     fun phase1Step(units: Int = 1) {
         if (phase2) return
         val done = phase1Units.addAndGet(units)
-        publish(minOf(phase1Budget, done))
+        publish(minOf(phase1Budget, done * phase1UnitPercent))
     }
 
     /** 进入阶段 2：剩余预算按 [totalUnits] 个已知工作单元平均分配 */
