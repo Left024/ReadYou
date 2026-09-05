@@ -88,11 +88,17 @@ class DiffMapHolder @Inject constructor(
         applicationScope.launch {
             accountService.currentAccountFlow.mapNotNull { it }.collect { account ->
                 val previousAccount = currentAccount
-                if (previousAccount != null && previousAccount != account) {
+                // 只在真正切换账户（id 变化）时清理/重建 overlay；
+                // 同一账户的字段更新（如同步结束时的 updateAt）会令 AccountDao flow
+                // 重发射，若在此清理会把灰色已读 overlay 清空，导致刷新结束后
+                // 已读文章在列表里退回未读。
+                if (previousAccount != null && previousAccount.id != account.id) {
                     cleanup(previousAccount)
                 }
                 currentAccount = account
-                init(account)
+                if (previousAccount == null || previousAccount.id != account.id) {
+                    init(account)
+                }
             }
         }
     }
@@ -240,9 +246,11 @@ class DiffMapHolder @Inject constructor(
     }
 
     private fun writeDiffsToCache() {
+        // 先同步取快照，避免调用方随后 clear diffMap 导致异步序列化拿到空 map
+        val snapshot = diffMap.toMap()
         applicationScope.launch(ioDispatcher) {
             try {
-                val tmpJson = gson.toJson(diffMap)
+                val tmpJson = gson.toJson(snapshot)
                 userCacheDir.mkdirs()
                 cacheFile.createNewFile()
                 if (cacheFile.exists() && cacheFile.canWrite()) {
