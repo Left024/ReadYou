@@ -23,6 +23,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -62,17 +63,30 @@ fun BoxScope.PullToSyncIndicator(
 
     var showIndeterminateIndicator by remember { mutableStateOf(isSyncing) }
 
-    // 显示用百分比：向真实进度平滑爬升，让离散的上报点（如 7% → 14% → 90%）
-    // 在 UI 上呈现为连续的中间过程
+    // 显示用百分比：向真实进度平滑爬升；真实进度长时间停滞时缓慢兜底爬升
+    // （约 0.7s +1%，封顶 96），避免同步中段停住不动、结束时瞬间冲到 100
     var displayedPercent by remember { mutableStateOf(progress ?: 0) }
-    LaunchedEffect(progress) {
-        val target = progress
+    val currentProgress by rememberUpdatedState(progress)
+    LaunchedEffect(isSyncing) {
+        if (!isSyncing) return@LaunchedEffect
+        // 新一轮同步开始，把上一轮残留的高值压回当前真实进度
+        val target = currentProgress
         if (target != null && target in 0..100) {
             if (displayedPercent > target) displayedPercent = target
-            while (displayedPercent < target) {
-                val step = ((target - displayedPercent) / 4).coerceAtLeast(1)
-                displayedPercent = (displayedPercent + step).coerceAtMost(target)
+        } else {
+            displayedPercent = 0
+        }
+        while (true) {
+            val real = currentProgress
+            if (real != null && real in 0..100 && displayedPercent < real) {
+                val step = ((real - displayedPercent) / 4).coerceAtLeast(1)
+                displayedPercent = (displayedPercent + step).coerceAtMost(real)
                 delay(70)
+            } else if (displayedPercent < 96) {
+                displayedPercent += 1
+                delay(700)
+            } else {
+                delay(300)
             }
         }
     }

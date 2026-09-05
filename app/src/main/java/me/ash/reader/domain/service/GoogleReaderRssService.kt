@@ -384,7 +384,9 @@ constructor(
                 // 推送失败无需处理：下一次同步仍会命中交集并重试，直到远端收敛。
                 val toBePushedRead =
                     localReadIds.intersect(remoteUnreadIds.await()).toList()
-                toBePushedRead.chunked(500).forEach {
+                val chunks = toBePushedRead.chunked(500)
+                // 历史积压时推送是同步里最耗时的网络步骤，按 chunk 上报进度（40..55）
+                chunks.forEachIndexed { index, it ->
                     runCatching {
                         googleReaderAPI.editTag(
                             itemIds = it,
@@ -392,6 +394,10 @@ constructor(
                             unmark = null,
                         )
                     }
+                    reportProgress(40 + (15 * (index + 1) / chunks.size).coerceAtMost(15))
+                }
+                if (chunks.isNotEmpty()) {
+                    reportProgress(55)
                 }
             }
 
@@ -471,7 +477,9 @@ constructor(
                     .also { feedDao.update(*it.toTypedArray()) }
             }
 
-            groupDao.insertOrUpdate(remoteGroups.await())
+            val groupsResolved = remoteGroups.await()
+            reportProgress(38)
+            groupDao.insertOrUpdate(groupsResolved)
             feedDao.insertOrUpdate(remoteFeeds.await())
             reportProgress(45)
 
@@ -522,10 +530,10 @@ constructor(
                     null
                 }
 
-            // 等新文章内容全部抓取完成后再报 90，避免过早的 90 把内容阶段的
+            // 等新文章内容全部抓取完成后再进入收尾，避免过早报高值把内容阶段的
             // 中间进度（30..88）全部吞掉
             contentJob?.join()
-            reportProgress(90)
+            reportProgress(70)
 
             // 8. Remove orphaned groups and feeds, after synchronizing the
             // starred/un-starred
@@ -538,6 +546,7 @@ constructor(
                 .filter { it.id !in remoteFeeds.await().map { feed -> feed.id } }
                 .forEach { super.deleteFeed(it, true) }
 
+            reportProgress(90)
             reportProgress(100)
             accountService.update(account.copy(updateAt = Date()))
             ListenableWorker.Result.success()
@@ -664,9 +673,10 @@ constructor(
 
             launch {
                 // 本地已读但远端仍为未读：推读远端，本地保持已读（参见整账户同步的说明）
-                val toBePushedReadIds =
-                    localReadIds.intersect(remoteUnreadIds.await()).map { it.dollarLast() }.toList()
-                toBePushedReadIds.chunked(500).forEach {
+                val chunks =
+                    localReadIds.intersect(remoteUnreadIds.await()).map { it.dollarLast() }
+                        .chunked(500)
+                chunks.forEachIndexed { index, it ->
                     runCatching {
                         googleReaderAPI.editTag(
                             itemIds = it,
@@ -674,6 +684,10 @@ constructor(
                             unmark = null,
                         )
                     }
+                    reportProgress(72 + (8 * (index + 1) / chunks.size).coerceAtMost(8))
+                }
+                if (chunks.isNotEmpty()) {
+                    reportProgress(80)
                 }
             }
 
