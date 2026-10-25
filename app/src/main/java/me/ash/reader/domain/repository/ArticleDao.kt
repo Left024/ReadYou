@@ -896,7 +896,9 @@ interface ArticleDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertOnConflictIgnore(vararg article: Article)
 
-    @Insert
+    // IGNORE：同步可能被并发触发（启动同步 / 下拉刷新 / 周期任务），
+    // 两轮同时插入同一批文章时 REPLACE/ABORT 会抛 UNIQUE 约束直接让整轮同步失败
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertList(articles: List<Article>)
 
     @Delete
