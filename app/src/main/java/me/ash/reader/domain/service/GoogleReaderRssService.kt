@@ -64,6 +64,16 @@ import timber.log.Timber
 
 private const val TAG = "GoogleReaderRssService"
 
+/**
+ * 增量同步重叠窗口（秒）。
+ *
+ * Google Reader 协议没有真正的增量接口，但 TTRSS(freshapi)/FreshRSS 的
+ * `stream/items/ids` 支持 `ot`（文章入库时间 >= ot）。重度账户的未读数可达数万条，
+ * 全量拉取会变成几十页、一分钟以上，期间用户一次下拉刷新就会取消整轮同步。
+ * 用「上次成功同步时间 - 12 小时」作为起点，只拉新增文章的 id。
+ */
+private const val INCREMENTAL_OVERLAP_SECONDS = 12 * 60 * 60L
+
 class GoogleReaderRssService
 @Inject
 constructor(
@@ -282,11 +292,15 @@ constructor(
                     .time
                     .time / 1000
 
+            // 增量起点：上次成功同步时间 - 重叠窗口。首次同步（updateAt 为空）走全量。
+            val lastSyncAt =
+                account.updateAt?.let { it.time / 1000L - INCREMENTAL_OVERLAP_SECONDS }
+
             val remoteUnreadIds = async {
                 fetchItemIdsAndContinue(
                     // 每次分页网络往返 +1%（页数未知时用封顶预算，见 SyncProgressPlanner）
                     onPage = { planner.phase1Step() },
-                ) { googleReaderAPI.getUnreadItemIds(continuationId = it) }
+                ) { googleReaderAPI.getUnreadItemIds(since = lastSyncAt, continuationId = it) }
                     .map { it.shortId }
                     .toSet()
             }
@@ -729,15 +743,21 @@ constructor(
         getItemIdsFunc: suspend (continuationId: String?) -> GoogleReaderDTO.ItemIds?,
     ): MutableList<String> {
         var pageNo = 0
-        var result = getItemIdsFunc(null)
+        // null 表示请求失败（重试耗尽），不能当成「服务器没有数据」：
+        // 否则整个同步会以空 id 列表「成功」结束，用户看到的却是同步完成但没有新文章。
+        var result =
+            getItemIdsFunc(null)
+                ?: throw IllegalStateException("fetch item ids failed (page 1)")
         pageNo++
         onPage?.invoke(pageNo)
-        val ids = result?.itemRefs?.mapNotNull { it.id }?.toMutableList() ?: return mutableListOf()
-        while (result != null && result.continuation != null) {
-            result = getItemIdsFunc(result.continuation)
+        val ids = result.itemRefs?.mapNotNull { it.id }?.toMutableList() ?: mutableListOf()
+        while (result.continuation != null) {
+            result =
+                getItemIdsFunc(result.continuation)
+                    ?: throw IllegalStateException("fetch item ids failed (page ${pageNo + 1})")
             pageNo++
             onPage?.invoke(pageNo)
-            result?.itemRefs?.mapNotNull { it.id }?.let { ids.addAll(it) }
+            result.itemRefs?.mapNotNull { it.id }?.let { ids.addAll(it) }
         }
         return ids
     }

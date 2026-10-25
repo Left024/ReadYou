@@ -138,7 +138,9 @@ constructor(
             workManager
                 .beginUniqueWork(
                     SYNC_ONETIME_NAME,
-                    ExistingWorkPolicy.REPLACE,
+                    // KEEP：同步进行中再次下拉不再取消本轮。REPLACE 会让用户连续刷新时
+                    // 永远从第一页重新开始（大账户一轮同步动辄几十页），文章迟迟进不来。
+                    ExistingWorkPolicy.KEEP,
                     OneTimeWorkRequestBuilder<SyncWorker>()
                         .addTag(SYNC_TAG)
                         .addTag(ONETIME_WORK_TAG)
