@@ -111,3 +111,9 @@ AGENTS.md
 
 apk/
 .rycheck/
+
+# DSH local build/test artifacts
+.gradle-home/
+.screen*.png
+.emu-boot.log
+.build.log
